@@ -16,7 +16,7 @@
     album:$("album"), albumHero:$("albumHero"), albumCover:$("albumCover"), albumCountry:$("albumCountry"),
     albumTitle:$("albumTitle"), albumOneLine:$("albumOneLine"), checkin:$("checkinBtn"),
     checkinText:$("checkinText"), date:$("tripDate"), route:$("routeText"), memory:$("memoryText"),
-    gallery:$("gallery"), galleryEmpty:$("galleryEmpty"), photoInput:$("photoInput"),
+    galleryLoader:$("galleryLoader"), gallery:$("gallery"), galleryEmpty:$("galleryEmpty"), photoInput:$("photoInput"),
     editPlace:$("editPlaceBtn"), deletePlace:$("deletePlaceBtn"), toast:$("toast")
   };
 
@@ -39,6 +39,37 @@
   function openDialog(dialog){ if (!dialog.open) dialog.showModal(); }
   function closeDialog(id){ const d=$(id); if (d?.open) d.close(); }
   function clearObjectUrls(){ objectUrls.forEach(URL.revokeObjectURL); objectUrls=[]; }
+
+  function setGalleryLoading(loading,text="先加载封面，再把相册慢慢带来…"){
+    E.galleryLoader.classList.toggle("hidden", !loading);
+    const textNode = E.galleryLoader.querySelector(".gallery-loader-text");
+    if(textNode) textNode.textContent = text;
+  }
+
+  function setAlbumCover(url){
+    E.albumHero.classList.toggle("has-cover", !!url);
+    if(url) E.albumCover.src = url;
+    else E.albumCover.removeAttribute("src");
+  }
+
+  function getCoverRow(rows){
+    return (rows||[]).find(r=>r.is_cover) || (rows||[])[0] || null;
+  }
+
+  async function cloudPhotoRows(placeId){
+    const {data,error}=await sb.from("photos")
+      .select("*").eq("place_id",placeId).order("created_at");
+    if(error) throw error;
+    return data || [];
+  }
+
+  async function cloudSignedPhoto(rec){
+    const {data:signed,error:signError}=await sb.storage
+      .from("trip-photos").createSignedUrl(rec.storage_path,3600);
+    if(signError) console.warn(signError);
+    return {...rec,url:signed?.signedUrl||""};
+  }
+
 
   function assertCanEdit(){
     if(!state.canEdit) throw new Error("当前为只读浏览模式。请使用有编辑权限的账号登录。");
@@ -474,18 +505,8 @@
 
   // ---------------- Photos ----------------
   async function cloudPhotoList(placeId){
-    const {data,error}=await sb.from("photos")
-      .select("*").eq("place_id",placeId).order("created_at");
-    if(error) throw error;
-
-    // Generate all signed URLs in parallel instead of waiting for each photo
-    // one-by-one. This makes albums with many photos open much faster.
-    return Promise.all((data||[]).map(async r=>{
-      const {data:signed,error:signError}=await sb.storage
-        .from("trip-photos").createSignedUrl(r.storage_path,3600);
-      if(signError) console.warn(signError);
-      return {...r,url:signed?.signedUrl||""};
-    }));
+    const rows = await cloudPhotoRows(placeId);
+    return Promise.all(rows.map(cloudSignedPhoto));
   }
 
   async function cloudPhotoAdd(placeId,file){
@@ -527,17 +548,47 @@
     if(!state.currentPlace) return;
     const placeId=state.currentPlace.id;
     E.gallery.innerHTML="";
-    E.galleryEmpty.classList.remove("hidden");
+    E.galleryEmpty.classList.add("hidden");
     clearObjectUrls();
+    setGalleryLoading(true);
 
     try{
-      let rows;
+      let rows=[];
+      let coverUrl="";
+
       if(CLOUD){
-        rows=await cloudPhotoList(placeId);
+        rows = await cloudPhotoRows(placeId);
+
+        if(!state.currentPlace||state.currentPlace.id!==placeId) return;
+
+        const coverRow = getCoverRow(rows);
+        if(coverRow){
+          const signedCover = await cloudSignedPhoto(coverRow);
+          if(!state.currentPlace||state.currentPlace.id!==placeId) return;
+          coverUrl = signedCover.url || "";
+          setAlbumCover(coverUrl);
+        }else{
+          setAlbumCover("");
+        }
+
+        const signedRows = await Promise.all(rows.map(cloudSignedPhoto));
+        if(!state.currentPlace||state.currentPlace.id!==placeId) return;
+        rows = signedRows;
       }else{
-        rows=await localPhotoList(placeId);
-        rows=rows.map(r=>{
-          const url=URL.createObjectURL(r.blob);
+        rows = await localPhotoList(placeId);
+        if(!state.currentPlace||state.currentPlace.id!==placeId) return;
+
+        const coverRow = getCoverRow(rows);
+        if(coverRow?.blob){
+          coverUrl = URL.createObjectURL(coverRow.blob);
+          objectUrls.push(coverUrl);
+          setAlbumCover(coverUrl);
+        }else{
+          setAlbumCover("");
+        }
+
+        rows = rows.map(r=>{
+          const url = URL.createObjectURL(r.blob);
           objectUrls.push(url);
           return {...r,url};
         });
@@ -546,11 +597,15 @@
       if(!state.currentPlace||state.currentPlace.id!==placeId) return;
 
       state.photos=rows;
+      E.gallery.innerHTML="";
       E.galleryEmpty.classList.toggle("hidden",rows.length>0);
 
-      const cover=rows.find(r=>r.is_cover)||rows[0];
-      E.albumHero.classList.toggle("has-cover",!!cover);
-      E.albumCover.src=cover?.url||"";
+      if(!rows.length){
+        setAlbumCover("");
+      }else if(!coverUrl){
+        const cover=getCoverRow(rows);
+        setAlbumCover(cover?.url||"");
+      }
 
       rows.forEach(rec=>{
         const item=document.createElement("div");
@@ -586,9 +641,16 @@
 
         E.gallery.appendChild(item);
       });
+
+      if(!rows.length){
+        E.galleryEmpty.textContent="还没有照片。下一次旅行，从这里开始记录。";
+      }
     }catch(e){
       console.error(e);
       E.galleryEmpty.textContent="照片读取失败："+e.message;
+      E.galleryEmpty.classList.remove("hidden");
+    }finally{
+      setGalleryLoading(false);
     }
   }
 

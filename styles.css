@@ -624,6 +624,70 @@ h1{
   column-gap:7px;
 }
 
+.gallery-loader{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+  min-height:136px;
+  margin:6px 0 10px;
+  padding:18px 14px;
+  border:1px dashed #d7cdbf;
+  border-radius:18px;
+  background:linear-gradient(180deg,rgba(255,255,255,.78),rgba(247,242,232,.92));
+  color:var(--green);
+}
+
+.dog-loader{
+  position:relative;
+  width:136px;
+  height:58px;
+}
+
+.dog{
+  position:absolute;
+  top:0;
+  width:76px;
+  height:48px;
+  overflow:visible;
+  color:#5f7b68;
+  filter:drop-shadow(0 4px 10px rgba(95,123,104,.12));
+}
+
+.dog-a{
+  left:0;
+  animation:dogChaseA 1.8s ease-in-out infinite;
+}
+
+.dog-b{
+  left:58px;
+  transform:scaleX(-1);
+  color:#799784;
+  animation:dogChaseB 1.8s ease-in-out infinite;
+}
+
+.gallery-loader-text{
+  font-size:12px;
+  line-height:1.5;
+  color:var(--muted);
+  text-align:center;
+}
+
+@keyframes dogChaseA{
+  0%,100%{transform:translateX(0) translateY(0) rotate(0deg)}
+  25%{transform:translateX(12px) translateY(-2px) rotate(1deg)}
+  50%{transform:translateX(22px) translateY(0) rotate(0deg)}
+  75%{transform:translateX(10px) translateY(2px) rotate(-1deg)}
+}
+
+@keyframes dogChaseB{
+  0%,100%{transform:scaleX(-1) translateX(0) translateY(0) rotate(0deg)}
+  25%{transform:scaleX(-1) translateX(-12px) translateY(2px) rotate(-1deg)}
+  50%{transform:scaleX(-1) translateX(-22px) translateY(0) rotate(0deg)}
+  75%{transform:scaleX(-1) translateX(-10px) translateY(-2px) rotate(1deg)}
+}
+
 .photo{
   position:relative;
   break-inside:avoid;
@@ -667,6 +731,21 @@ h1{
   color:#989187;
   padding:28px 8px;
   font-size:12px;
+}
+
+.album-hero:not(.has-cover)::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  background:linear-gradient(110deg,rgba(255,255,255,.08) 8%,rgba(255,255,255,.26) 18%,rgba(255,255,255,.08) 28%);
+  background-size:220% 100%;
+  animation:heroShimmer 1.6s linear infinite;
+  pointer-events:none;
+}
+
+@keyframes heroShimmer{
+  0%{background-position:200% 0}
+  100%{background-position:-40% 0}
 }
 
 .danger-zone{

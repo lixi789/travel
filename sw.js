@@ -1,4 +1,4 @@
-const CACHE='shared-hiking-v5-fast';
+const CACHE='shared-hiking-v6-coverfirst';
 const CORE=[
   './',
   './index.html',
