@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#f7f2e8">
+  <title>补齐缩略图 · 山野清单</title>
+  <style>
+    :root{
+      --paper:#f7f2e8;--card:#fffdf8;--ink:#252620;--muted:#777266;
+      --green:#557360;--green2:#789681;--line:#e6ded2;--danger:#a44f48;
+    }
+    *{box-sizing:border-box}
+    html{background:var(--paper);-webkit-text-size-adjust:100%}
+    body{
+      margin:0;min-height:100dvh;color:var(--ink);
+      font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","PingFang SC","Helvetica Neue",Arial,sans-serif;
+      background:linear-gradient(180deg,#f6f0e5,#fbfaf6 48%,#f3ede2);
+    }
+    button,input{font:inherit}
+    button{min-height:44px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+    .wrap{
+      width:min(100%,520px);margin:0 auto;
+      padding:max(24px,env(safe-area-inset-top)) 16px calc(36px + env(safe-area-inset-bottom));
+    }
+    .kicker{font-size:10px;letter-spacing:.15em;font-weight:850;color:var(--green)}
+    h1{font-size:34px;line-height:1;letter-spacing:-.045em;margin:7px 0 10px}
+    .sub{font-size:13px;line-height:1.65;color:var(--muted);margin:0 0 18px}
+    .card{
+      background:rgba(255,253,248,.88);border:1px solid var(--line);border-radius:22px;
+      padding:16px;box-shadow:0 12px 32px rgba(45,39,31,.06);margin-bottom:12px;
+    }
+    .status-row{display:flex;justify-content:space-between;gap:12px;align-items:center}
+    .status{font-size:13px;color:var(--muted)}
+    .badge{
+      display:inline-flex;align-items:center;min-height:28px;padding:5px 10px;border-radius:999px;
+      background:#edf3ee;color:#496652;font-size:11px;font-weight:800;
+    }
+    .hidden{display:none!important}
+    label{display:block;font-size:12px;font-weight:800;color:#6c675f;margin:12px 0}
+    input{
+      width:100%;min-height:48px;margin-top:6px;border:1px solid var(--line);
+      border-radius:14px;background:white;padding:11px 13px;font-size:16px;outline:none;
+    }
+    .btns{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:12px}
+    .btn{
+      border:0;border-radius:999px;padding:10px 14px;font-weight:850;
+    }
+    .primary{background:var(--green);color:white}
+    .ghost{background:#f0ebe2;color:var(--ink)}
+    .danger{background:#f6e8e5;color:var(--danger)}
+    .wide{width:100%}
+    .big-number{font-size:42px;font-weight:900;letter-spacing:-.05em}
+    .small{font-size:11px;color:var(--muted);line-height:1.55}
+    .progress{
+      height:9px;border-radius:999px;background:#e7e0d5;overflow:hidden;margin:14px 0 7px;
+    }
+    .progress i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--green),#8ca795);transition:.2s}
+    .current{
+      min-height:22px;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    }
+    .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+    .stat{background:#f6f1e8;border-radius:15px;padding:10px;text-align:center}
+    .stat strong{display:block;font-size:22px}
+    .stat span{font-size:10px;color:var(--muted)}
+    .log{
+      margin-top:12px;max-height:230px;overflow:auto;background:#292b27;color:#e9ece6;
+      border-radius:16px;padding:11px;font:11px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;
+      white-space:pre-wrap;word-break:break-word;
+    }
+    .dog-loader{
+      position:relative;width:150px;height:58px;margin:5px auto 2px;color:var(--green);
+    }
+    .dog{
+      position:absolute;top:2px;width:78px;height:48px;overflow:visible;
+      filter:drop-shadow(0 4px 8px rgba(70,96,77,.12));
+    }
+    .dog-a{left:0;animation:chaseA 1.8s ease-in-out infinite}
+    .dog-b{left:66px;transform:scaleX(-1);color:#7a9783;animation:chaseB 1.8s ease-in-out infinite}
+    @keyframes chaseA{
+      0%,100%{transform:translateX(0) translateY(0)}
+      50%{transform:translateX(20px) translateY(-2px)}
+    }
+    @keyframes chaseB{
+      0%,100%{transform:scaleX(-1) translateX(0) translateY(0)}
+      50%{transform:scaleX(-1) translateX(-20px) translateY(2px)}
+    }
+    .notice{
+      border-left:3px solid #9eb6a4;padding-left:10px;color:var(--muted);
+      font-size:12px;line-height:1.6;margin-top:10px;
+    }
+    @media(max-width:420px){
+      h1{font-size:31px}
+      .wrap{padding-left:14px;padding-right:14px}
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <div class="kicker">MAINTENANCE TOOL</div>
+    <h1>补齐旧照片缩略图</h1>
+    <p class="sub">
+      这个页面只处理已经上传、但还没有缩略图的旧照片。
+      原始高清照片不会删除。
+    </p>
+
+    <section class="card">
+      <div class="status-row">
+        <div>
+          <div class="small">当前状态</div>
+          <div id="statusText" class="status">正在连接 Supabase…</div>
+        </div>
+        <span id="memberBadge" class="badge">检查权限</span>
+      </div>
+    </section>
+
+    <section id="loginCard" class="card hidden">
+      <div class="small">如果没有自动继承主网站的登录状态，请在这里登录。</div>
+      <label>邮箱
+        <input id="email" type="email" autocomplete="email" placeholder="you@example.com">
+      </label>
+      <label>密码
+        <input id="password" type="password" autocomplete="current-password" placeholder="••••••••">
+      </label>
+      <button id="loginBtn" class="btn primary wide">登录</button>
+    </section>
+
+    <section id="toolCard" class="card hidden">
+      <div class="small">待处理照片</div>
+      <div id="pendingCount" class="big-number">0</div>
+
+      <div id="loader" class="hidden">
+        <div class="dog-loader" aria-hidden="true">
+          <svg class="dog dog-a" viewBox="0 0 120 70" fill="none">
+            <path d="M14 45c5-9 13-15 23-16l11-8 10 1 8 9 18 1c8 0 16 7 16 15 0 7-6 12-13 12H79l-5-9-8 1-6 8H38l-3-8-7 7H18c-6 0-10-5-10-10 0-3 2-7 6-12Z" stroke="currentColor" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M48 22l-3-10 11 8M26 31l-8-4M89 31l9-7" stroke="currentColor" stroke-width="4.5" stroke-linecap="round"/>
+            <circle cx="30" cy="39" r="2.5" fill="currentColor"/>
+          </svg>
+          <svg class="dog dog-b" viewBox="0 0 120 70" fill="none">
+            <path d="M14 45c5-9 13-15 23-16l11-8 10 1 8 9 18 1c8 0 16 7 16 15 0 7-6 12-13 12H79l-5-9-8 1-6 8H38l-3-8-7 7H18c-6 0-10-5-10-10 0-3 2-7 6-12Z" stroke="currentColor" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M48 22l-3-10 11 8M26 31l-8-4M89 31l9-7" stroke="currentColor" stroke-width="4.5" stroke-linecap="round"/>
+            <circle cx="30" cy="39" r="2.5" fill="currentColor"/>
+          </svg>
+        </div>
+      </div>
+
+      <div class="progress"><i id="progressBar"></i></div>
+      <div id="currentText" class="current">等待开始</div>
+
+      <div class="stats">
+        <div class="stat"><strong id="doneCount">0</strong><span>已完成</span></div>
+        <div class="stat"><strong id="failCount">0</strong><span>失败</span></div>
+        <div class="stat"><strong id="remainCount">0</strong><span>剩余</span></div>
+      </div>
+
+      <div class="btns">
+        <button id="scanBtn" class="btn ghost">重新扫描</button>
+        <button id="startBtn" class="btn primary">开始生成</button>
+      </div>
+
+      <div class="notice">
+        默认同时处理 2 张照片，避免 iPhone 或电脑浏览器一次解码太多原图。
+        生成后：相册缩略图最长边约 520 px；封面预览最长边约 1000 px。
+      </div>
+
+      <div id="log" class="log">等待操作…</div>
+    </section>
+  </main>
+
+  <script src="./config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+  (() => {
+    const CONFIG = window.APP_CONFIG || {};
+    const $ = id => document.getElementById(id);
+
+    const E = {
+      status:$("statusText"), badge:$("memberBadge"),
+      loginCard:$("loginCard"), toolCard:$("toolCard"),
+      email:$("email"), password:$("password"), loginBtn:$("loginBtn"),
+      pending:$("pendingCount"), done:$("doneCount"), fail:$("failCount"),
+      remain:$("remainCount"), scan:$("scanBtn"), start:$("startBtn"),
+      bar:$("progressBar"), current:$("currentText"), log:$("log"), loader:$("loader")
+    };
+
+    if(!CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_ANON_KEY || !window.supabase){
+      E.status.textContent = "找不到 Supabase 配置，请确认 config.js 与主网站在同一目录。";
+      E.badge.textContent = "配置错误";
+      return;
+    }
+
+    const sb = window.supabase.createClient(
+      CONFIG.SUPABASE_URL,
+      CONFIG.SUPABASE_ANON_KEY
+    );
+
+    let queue = [];
+    let running = false;
+    let stopRequested = false;
+    let done = 0;
+    let failed = 0;
+    const CONCURRENCY = 2;
+
+    function log(msg){
+      const time = new Date().toLocaleTimeString();
+      E.log.textContent += `\n[${time}] ${msg}`;
+      E.log.scrollTop = E.log.scrollHeight;
+    }
+
+    function resetLog(msg="等待操作…"){
+      E.log.textContent = msg;
+    }
+
+    function updateProgress(){
+      const total = done + failed + queue.length;
+      const finished = done + failed;
+      const pct = total ? Math.round(finished / total * 100) : 0;
+      E.done.textContent = done;
+      E.fail.textContent = failed;
+      E.remain.textContent = queue.length;
+      E.pending.textContent = queue.length;
+      E.bar.style.width = pct + "%";
+    }
+
+    async function requireMember(){
+      const {data:{session}} = await sb.auth.getSession();
+      const user = session?.user || null;
+      if(!user) return {user:null, member:false};
+
+      const {data,error} = await sb.from("app_members")
+        .select("user_id,display_name")
+        .eq("user_id",user.id)
+        .maybeSingle();
+
+      if(error) throw error;
+      return {user, member:Boolean(data), profile:data || null};
+    }
+
+    async function boot(){
+      try{
+        const auth = await requireMember();
+
+        if(!auth.user){
+          E.status.textContent = "请先登录有编辑权限的账号";
+          E.badge.textContent = "未登录";
+          E.loginCard.classList.remove("hidden");
+          return;
+        }
+
+        if(!auth.member){
+          E.status.textContent = `${auth.user.email} 没有编辑权限`;
+          E.badge.textContent = "只读账号";
+          E.loginCard.classList.remove("hidden");
+          return;
+        }
+
+        E.status.textContent = `${auth.user.email} · 可以处理缩略图`;
+        E.badge.textContent = "管理员模式";
+        E.loginCard.classList.add("hidden");
+        E.toolCard.classList.remove("hidden");
+        await scan();
+      }catch(err){
+        E.status.textContent = "初始化失败：" + err.message;
+        E.badge.textContent = "错误";
+      }
+    }
+
+    async function scan(){
+      if(running) return;
+      resetLog("正在扫描旧照片…");
+      E.current.textContent = "正在扫描…";
+
+      const {data,error} = await sb.from("photos")
+        .select("id,place_id,storage_path,thumbnail_path,preview_path,original_name,created_at")
+        .or("thumbnail_path.is.null,preview_path.is.null")
+        .order("created_at");
+
+      if(error){
+        log("扫描失败：" + error.message);
+        E.current.textContent = "扫描失败";
+        return;
+      }
+
+      queue = (data || []).filter(r => r.storage_path);
+      done = 0;
+      failed = 0;
+      updateProgress();
+
+      E.current.textContent = queue.length
+        ? `发现 ${queue.length} 张旧照片需要处理`
+        : "全部照片都已经有缩略图 ✓";
+
+      log(`扫描完成：${queue.length} 张待处理`);
+    }
+
+    async function login(){
+      E.loginBtn.disabled = true;
+      try{
+        const {error} = await sb.auth.signInWithPassword({
+          email:E.email.value.trim(),
+          password:E.password.value
+        });
+        if(error) throw error;
+        await boot();
+      }catch(err){
+        alert(err.message);
+      }finally{
+        E.loginBtn.disabled = false;
+      }
+    }
+
+    async function decodeImage(blob){
+      if("createImageBitmap" in window){
+        try{
+          return await createImageBitmap(blob,{imageOrientation:"from-image"});
+        }catch(e){
+          try{return await createImageBitmap(blob)}catch(_){}
+        }
+      }
+
+      return await new Promise((resolve,reject)=>{
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => {
+          URL.revokeObjectURL(url);
+          resolve(img);
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(url);
+          reject(new Error("图片解码失败"));
+        };
+        img.src = url;
+      });
+    }
+
+    async function resizeBlob(original,maxEdge,quality){
+      const source = await decodeImage(original);
+      const w = source.width || source.naturalWidth;
+      const h = source.height || source.naturalHeight;
+      if(!w || !h) throw new Error("无法读取图片尺寸");
+
+      const scale = Math.min(1,maxEdge / Math.max(w,h));
+      const width = Math.max(1,Math.round(w * scale));
+      const height = Math.max(1,Math.round(h * scale));
+
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+
+      const ctx = canvas.getContext("2d",{alpha:false});
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(source,0,0,width,height);
+
+      if(typeof source.close === "function") source.close();
+
+      const toBlob = (type,q) => new Promise(resolve => canvas.toBlob(resolve,type,q));
+
+      let blob = await toBlob("image/webp",quality);
+      let ext = "webp";
+
+      if(!blob){
+        blob = await toBlob("image/jpeg",Math.min(.78,quality+.12));
+        ext = "jpg";
+      }
+
+      if(!blob) throw new Error("图片压缩失败");
+      return {blob,ext,width,height};
+    }
+
+    function baseNameFromPath(path){
+      const filename = (path.split("/").pop() || "photo");
+      return filename.replace(/\.[^.]+$/,"") || crypto.randomUUID();
+    }
+
+    async function processOne(rec){
+      const shortName = rec.original_name || rec.storage_path.split("/").pop() || rec.id;
+      E.current.textContent = `正在处理：${shortName}`;
+      log(`开始：${shortName}`);
+
+      const download = await sb.storage.from("trip-photos").download(rec.storage_path);
+      if(download.error) throw download.error;
+
+      const base = baseNameFromPath(rec.storage_path);
+      let thumbPath = rec.thumbnail_path || null;
+      let previewPath = rec.preview_path || null;
+
+      if(!thumbPath){
+        const thumb = await resizeBlob(download.data,520,.56);
+        thumbPath = `${rec.place_id}/thumbs/${base}.${thumb.ext}`;
+        const up = await sb.storage.from("trip-photos").upload(
+          thumbPath,
+          thumb.blob,
+          {
+            upsert:true,
+            cacheControl:"31536000",
+            contentType:thumb.blob.type || "image/webp"
+          }
+        );
+        if(up.error) throw up.error;
+      }
+
+      if(!previewPath){
+        const preview = await resizeBlob(download.data,1000,.64);
+        previewPath = `${rec.place_id}/previews/${base}.${preview.ext}`;
+        const up = await sb.storage.from("trip-photos").upload(
+          previewPath,
+          preview.blob,
+          {
+            upsert:true,
+            cacheControl:"31536000",
+            contentType:preview.blob.type || "image/webp"
+          }
+        );
+        if(up.error) throw up.error;
+      }
+
+      const update = await sb.from("photos")
+        .update({
+          thumbnail_path:thumbPath,
+          preview_path:previewPath
+        })
+        .eq("id",rec.id);
+
+      if(update.error) throw update.error;
+
+      log(`完成：${shortName}`);
+    }
+
+    async function worker(){
+      while(queue.length && !stopRequested){
+        const rec = queue.shift();
+        updateProgress();
+
+        try{
+          await processOne(rec);
+          done++;
+        }catch(err){
+          failed++;
+          log(`失败：${rec.original_name || rec.storage_path} -> ${err.message}`);
+        }
+
+        updateProgress();
+
+        // Give Safari a moment to release decoded image memory.
+        await new Promise(r => setTimeout(r,120));
+      }
+    }
+
+    async function start(){
+      if(running || !queue.length) return;
+
+      running = true;
+      stopRequested = false;
+      E.start.disabled = true;
+      E.scan.disabled = true;
+      E.loader.classList.remove("hidden");
+      resetLog(`开始处理，共 ${queue.length} 张照片。`);
+
+      try{
+        const workers = Array.from(
+          {length:Math.min(CONCURRENCY,queue.length)},
+          () => worker()
+        );
+        await Promise.all(workers);
+
+        if(!queue.length){
+          E.current.textContent = failed
+            ? `处理结束：${done} 成功，${failed} 失败`
+            : `全部完成 ✓ 共 ${done} 张`;
+        }
+
+        log(`处理结束：成功 ${done}，失败 ${failed}`);
+      }finally{
+        running = false;
+        E.start.disabled = false;
+        E.scan.disabled = false;
+        E.loader.classList.add("hidden");
+        await scan();
+      }
+    }
+
+    E.loginBtn.onclick = login;
+    E.scan.onclick = scan;
+    E.start.onclick = start;
+
+    boot();
+  })();
+  </script>
+</body>
+</html>
