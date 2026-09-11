@@ -891,3 +891,20 @@ h1{
     border-radius:17px;
   }
 }
+
+
+/* Skip layout/paint work for off-screen sections until the user scrolls to them. */
+.country-card{
+  content-visibility:auto;
+  contain-intrinsic-size:220px;
+}
+
+.bottom-art{
+  content-visibility:auto;
+  contain-intrinsic-size:520px;
+}
+
+.photo{
+  content-visibility:auto;
+  contain-intrinsic-size:180px;
+}

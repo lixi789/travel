@@ -25,6 +25,14 @@
   let saveTimer = null;
   let objectUrls = [];
 
+  // Fast-path caches
+  const STATE_CACHE_KEY = "hiking.public.state.v7";
+  const PHOTO_META_TTL = 5 * 60 * 1000;
+  const SIGNED_URL_TTL = 45 * 60 * 1000;
+  const photoMetaCache = new Map();   // placeId -> {rows, ts}
+  const signedUrlCache = new Map();   // storagePath -> {url, expires}
+  let coverWarmupScheduled = false;
+
   const uuid = () => crypto.randomUUID ? crypto.randomUUID() : `id-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const esc = (s="") => String(s).replace(/[&<>"']/g, m => ({
     "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"
@@ -56,20 +64,152 @@
     return (rows||[]).find(r=>r.is_cover) || (rows||[])[0] || null;
   }
 
-  async function cloudPhotoRows(placeId){
+  async function cloudPhotoRows(placeId,{force=false}={}){
+    if(!force){
+      const cached=getCachedPhotoRows(placeId);
+      if(cached) return cached;
+    }
+
     const {data,error}=await sb.from("photos")
       .select("*").eq("place_id",placeId).order("created_at");
     if(error) throw error;
-    return data || [];
+
+    const rows=data||[];
+    cachePhotoRows(placeId,rows);
+    return rows;
+  }
+
+  async function cloudSignedUrls(rows){
+    if(!rows?.length) return [];
+
+    const missingPaths=[];
+    for(const row of rows){
+      if(!cachedSignedUrl(row.storage_path)) missingPaths.push(row.storage_path);
+    }
+
+    if(missingPaths.length){
+      // One Storage request for all missing URLs instead of N requests.
+      const {data,error}=await sb.storage
+        .from("trip-photos")
+        .createSignedUrls(missingPaths,3600);
+
+      if(error){
+        console.warn(error);
+      }else{
+        for(const item of data||[]){
+          const path=item.path || item.storagePath;
+          const url=item.signedUrl || item.signedURL;
+          if(path && url) rememberSignedUrl(path,url);
+        }
+      }
+    }
+
+    return rows.map(row=>({
+      ...row,
+      url:cachedSignedUrl(row.storage_path)
+    }));
   }
 
   async function cloudSignedPhoto(rec){
-    const {data:signed,error:signError}=await sb.storage
-      .from("trip-photos").createSignedUrl(rec.storage_path,3600);
-    if(signError) console.warn(signError);
-    return {...rec,url:signed?.signedUrl||""};
+    if(!rec) return null;
+    const [signed]=await cloudSignedUrls([rec]);
+    return signed || {...rec,url:""};
   }
 
+  async function preloadAllPhotoMetaAndCovers(){
+    if(!CLOUD || coverWarmupScheduled) return;
+    coverWarmupScheduled=true;
+
+    requestIdle(async()=>{
+      try{
+        const {data,error}=await sb.from("photos")
+          .select("*").order("created_at");
+        if(error) throw error;
+
+        const grouped=new Map();
+        for(const row of data||[]){
+          if(!grouped.has(row.place_id)) grouped.set(row.place_id,[]);
+          grouped.get(row.place_id).push(row);
+        }
+
+        const covers=[];
+        for(const [placeId,rows] of grouped){
+          cachePhotoRows(placeId,rows);
+          const cover=getCoverRow(rows);
+          if(cover) covers.push(cover);
+        }
+
+        // Warm every album cover in one batch after the home page is already visible.
+        await cloudSignedUrls(covers);
+      }catch(e){
+        console.warn("Background cover prefetch skipped:",e);
+      }finally{
+        coverWarmupScheduled=false;
+      }
+    });
+  }
+
+
+  function loadCachedPublicState(){
+    try{
+      const raw=localStorage.getItem(STATE_CACHE_KEY);
+      if(!raw) return false;
+      const cached=JSON.parse(raw);
+      if(!cached?.countries || !cached?.places) return false;
+      state.countries=cached.countries;
+      state.places=cached.places;
+      return true;
+    }catch(e){
+      return false;
+    }
+  }
+
+  function saveCachedPublicState(){
+    try{
+      localStorage.setItem(STATE_CACHE_KEY,JSON.stringify({
+        countries:state.countries,
+        places:state.places,
+        savedAt:Date.now()
+      }));
+    }catch(e){}
+  }
+
+  function requestIdle(fn){
+    if("requestIdleCallback" in window){
+      requestIdleCallback(fn,{timeout:1200});
+    }else{
+      setTimeout(fn,250);
+    }
+  }
+
+  function cachePhotoRows(placeId,rows){
+    photoMetaCache.set(placeId,{rows,ts:Date.now()});
+  }
+
+  function getCachedPhotoRows(placeId){
+    const hit=photoMetaCache.get(placeId);
+    if(!hit) return null;
+    if(Date.now()-hit.ts>PHOTO_META_TTL){
+      photoMetaCache.delete(placeId);
+      return null;
+    }
+    return hit.rows;
+  }
+
+  function cachedSignedUrl(path){
+    const hit=signedUrlCache.get(path);
+    if(!hit) return "";
+    if(Date.now()>=hit.expires){
+      signedUrlCache.delete(path);
+      return "";
+    }
+    return hit.url;
+  }
+
+  function rememberSignedUrl(path,url){
+    if(!url) return;
+    signedUrlCache.set(path,{url,expires:Date.now()+SIGNED_URL_TTL});
+  }
 
   function assertCanEdit(){
     if(!state.canEdit) throw new Error("当前为只读浏览模式。请使用有编辑权限的账号登录。");
@@ -200,6 +340,7 @@
     if(p.error) throw p.error;
     state.countries = c.data || [];
     state.places = p.data || [];
+    saveCachedPublicState();
   }
 
   function subscribeRealtime(){
@@ -215,8 +356,10 @@
           if(p){state.currentPlace={...p};syncAlbumFields()}
         }
       })
-      .on("postgres_changes",{event:"*",schema:"public",table:"photos"}, () => {
-        if(state.currentPlace) renderPhotos();
+      .on("postgres_changes",{event:"*",schema:"public",table:"photos"}, payload => {
+        const placeId=payload.new?.place_id || payload.old?.place_id;
+        if(placeId) photoMetaCache.delete(placeId);
+        if(state.currentPlace && (!placeId || state.currentPlace.id===placeId)) renderPhotos();
       })
       .subscribe();
   }
@@ -505,8 +648,8 @@
 
   // ---------------- Photos ----------------
   async function cloudPhotoList(placeId){
-    const rows = await cloudPhotoRows(placeId);
-    return Promise.all(rows.map(cloudSignedPhoto));
+    const rows=await cloudPhotoRows(placeId);
+    return cloudSignedUrls(rows);
   }
 
   async function cloudPhotoAdd(placeId,file){
@@ -526,6 +669,7 @@
       await sb.storage.from("trip-photos").remove([path]);
       throw ins.error;
     }
+    photoMetaCache.delete(placeId);
   }
 
   async function cloudPhotoDelete(rec){
@@ -534,6 +678,8 @@
     if(s.error) throw s.error;
     const d=await sb.from("photos").delete().eq("id",rec.id);
     if(d.error) throw d.error;
+    photoMetaCache.delete(rec.place_id);
+    signedUrlCache.delete(rec.storage_path);
   }
 
   async function cloudPhotoSetCover(placeId,id){
@@ -542,6 +688,7 @@
     if(a.error) throw a.error;
     const b=await sb.from("photos").update({is_cover:true}).eq("id",id);
     if(b.error) throw b.error;
+    photoMetaCache.delete(placeId);
   }
 
   async function renderPhotos(){
@@ -571,7 +718,7 @@
           setAlbumCover("");
         }
 
-        const signedRows = await Promise.all(rows.map(cloudSignedPhoto));
+        const signedRows = await cloudSignedUrls(rows);
         if(!state.currentPlace||state.currentPlace.id!==placeId) return;
         rows = signedRows;
       }else{
@@ -688,6 +835,7 @@
     await cloudLoad();
     subscribeRealtime();
     render();
+    preloadAllPhotoMetaAndCovers();
 
     if(state.currentPlace){
       const fresh=state.places.find(x=>x.id===state.currentPlace.id);
@@ -811,6 +959,12 @@
   // ---------------- Boot ----------------
   async function boot(){
     if(CLOUD){
+      // Show the last public state immediately; refresh silently from Supabase.
+      if(loadCachedPublicState()){
+        render();
+        E.conn.textContent="正在同步最新内容…";
+      }
+
       sb.auth.onAuthStateChange((event)=>{
         if(event!=="INITIAL_SESSION") setTimeout(updateAuthUI,0);
       });
