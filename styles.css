@@ -39,6 +39,7 @@ button,input,select,textarea{touch-action:manipulation}
 
 /* Full-resolution new illustrations, without destructive mobile cropping */
 .top-art,.bottom-art{width:100%;overflow:hidden}
+.top-art picture,.bottom-art picture{display:block;width:100%}
 
 .top-art{
   background:#7bc9ee;

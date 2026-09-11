@@ -478,14 +478,14 @@
       .select("*").eq("place_id",placeId).order("created_at");
     if(error) throw error;
 
-    const out=[];
-    for(const r of data||[]){
+    // Generate all signed URLs in parallel instead of waiting for each photo
+    // one-by-one. This makes albums with many photos open much faster.
+    return Promise.all((data||[]).map(async r=>{
       const {data:signed,error:signError}=await sb.storage
         .from("trip-photos").createSignedUrl(r.storage_path,3600);
       if(signError) console.warn(signError);
-      out.push({...r,url:signed?.signedUrl||""});
-    }
-    return out;
+      return {...r,url:signed?.signedUrl||""};
+    }));
   }
 
   async function cloudPhotoAdd(placeId,file){
@@ -556,7 +556,7 @@
         const item=document.createElement("div");
         item.className="photo";
         item.innerHTML=`
-          <img src="${esc(rec.url)}" alt="">
+          <img src="${esc(rec.url)}" alt="" loading="lazy" decoding="async">
           ${state.canEdit ? `
           <div class="photo-actions">
             <button class="cover">${rec.is_cover?"封面 ✓":"设为封面"}</button>
@@ -749,7 +749,9 @@
   // ---------------- Boot ----------------
   async function boot(){
     if(CLOUD){
-      sb.auth.onAuthStateChange(()=>setTimeout(updateAuthUI,0));
+      sb.auth.onAuthStateChange((event)=>{
+        if(event!=="INITIAL_SESSION") setTimeout(updateAuthUI,0);
+      });
       await updateAuthUI();
     }else{
       await localInit();

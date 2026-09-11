@@ -9,12 +9,16 @@
   <meta name="apple-mobile-web-app-title" content="山野清单">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./assets/icon-192.png">
+  <link rel="preload" as="image" href="./assets/top-banner.webp" type="image/webp" fetchpriority="high">
   <link rel="stylesheet" href="./styles.css">
   <title>山野清单 · Shared Hiking Album</title>
 </head>
 <body>
   <header class="top-art">
-    <img src="./assets/top-banner.jpg" alt="徒步清单">
+    <picture>
+      <source srcset="./assets/top-banner.webp" type="image/webp">
+      <img src="./assets/top-banner.jpg" alt="徒步清单" width="1440" height="480" decoding="async" fetchpriority="high">
+    </picture>
   </header>
 
   <main class="app-shell">
@@ -50,7 +54,10 @@
   </main>
 
   <footer class="bottom-art">
-    <img src="./assets/bottom-banner.jpg" alt="两只狗看向山野">
+    <picture>
+      <source srcset="./assets/bottom-banner.webp" type="image/webp">
+      <img src="./assets/bottom-banner.jpg" alt="两只狗看向山野" width="1200" height="900" loading="lazy" decoding="async" fetchpriority="low">
+    </picture>
   </footer>
 
   <dialog id="authDialog" class="dialog">
@@ -96,7 +103,7 @@
 
   <section id="album" class="album" aria-hidden="true">
     <div id="albumHero" class="album-hero">
-      <img id="albumCover" class="album-cover" alt="">
+      <img id="albumCover" class="album-cover" alt="" decoding="async" fetchpriority="high">
       <div class="hero-shade"></div>
       <button class="round-back" id="albumBack">‹</button>
       <button class="round-more" id="editPlaceBtn">•••</button>
