@@ -20,7 +20,7 @@
     editPlace:$("editPlaceBtn"), deletePlace:$("deletePlaceBtn"), toast:$("toast")
   };
 
-  const state = { countries:[], places:[], currentPlace:null, user:null, photos:[] };
+  const state = { countries:[], places:[], currentPlace:null, user:null, photos:[], canEdit:false };
   let realtimeChannel = null;
   let saveTimer = null;
   let objectUrls = [];
@@ -39,6 +39,28 @@
   function openDialog(dialog){ if (!dialog.open) dialog.showModal(); }
   function closeDialog(id){ const d=$(id); if (d?.open) d.close(); }
   function clearObjectUrls(){ objectUrls.forEach(URL.revokeObjectURL); objectUrls=[]; }
+
+  function assertCanEdit(){
+    if(!state.canEdit) throw new Error("当前为只读浏览模式。请使用有编辑权限的账号登录。");
+  }
+
+  function applyEditMode(){
+    E.addCountry.classList.toggle("hidden", !state.canEdit);
+    E.editPlace.classList.toggle("hidden", !state.canEdit);
+    E.deletePlace.classList.toggle("hidden", !state.canEdit);
+
+    const upload = E.photoInput.closest(".upload-pill");
+    if(upload) upload.classList.toggle("hidden", !state.canEdit);
+
+    E.checkin.disabled = !state.canEdit;
+    E.checkin.setAttribute("aria-disabled", state.canEdit ? "false" : "true");
+    E.date.disabled = !state.canEdit;
+    E.route.readOnly = !state.canEdit;
+    E.memory.readOnly = !state.canEdit;
+
+    const emptyAdd = E.empty.querySelector("button");
+    if(emptyAdd) emptyAdd.classList.toggle("hidden", !state.canEdit);
+  }
 
   // ---------------- Local preview backend ----------------
   const LOCAL_DATA_KEY = "hiking.shared.v3.data";
@@ -60,6 +82,7 @@
       localPersist();
     }
     state.user = { email:"本地预览" };
+    state.canEdit = true;
   }
   function localPersist(){
     localStorage.setItem(LOCAL_DATA_KEY, JSON.stringify({
@@ -134,12 +157,7 @@
       .maybeSingle();
 
     if(error) throw error;
-    if(!data){
-      await sb.auth.signOut();
-      state.user=null;
-      throw new Error("这个账号不在两人共享相册白名单中。");
-    }
-    return true;
+    return Boolean(data);
   }
 
   async function cloudLoad(){
@@ -154,7 +172,7 @@
   }
 
   function subscribeRealtime(){
-    if(!CLOUD || !state.user) return;
+    if(!CLOUD) return;
     if(realtimeChannel) sb.removeChannel(realtimeChannel);
 
     realtimeChannel = sb.channel("shared-hiking-album")
@@ -178,6 +196,7 @@
 
   // ---------------- CRUD ----------------
   async function saveCountry(id,name,flag){
+    assertCanEdit();
     if(CLOUD){
       const payload={name,flag};
       if(id){
@@ -204,6 +223,7 @@
   }
 
   async function deleteCountry(id){
+    assertCanEdit();
     if(CLOUD){
       const {error}=await sb.from("countries").delete().eq("id",id);
       if(error) throw error;
@@ -217,6 +237,7 @@
   }
 
   async function savePlace(id,country_id,name,kind){
+    assertCanEdit();
     if(CLOUD){
       const payload={country_id,name,kind};
       if(id){
@@ -244,6 +265,7 @@
   }
 
   async function updatePlace(id,patch,{quiet=false}={}){
+    assertCanEdit();
     if(CLOUD){
       const {error}=await sb.from("places").update(patch).eq("id",id);
       if(error) throw error;
@@ -262,6 +284,7 @@
   }
 
   async function deletePlace(id){
+    assertCanEdit();
     if(CLOUD){
       const {error}=await sb.from("places").delete().eq("id",id);
       if(error) throw error;
@@ -293,15 +316,18 @@
             <div class="country-title">${esc(c.name)}</div>
             <div class="country-meta">${places.length} 个地点</div>
           </div>
+          ${state.canEdit ? `
           <div class="country-actions">
             <button class="icon-btn add-place" title="添加路线">＋</button>
             <button class="icon-btn edit-country" title="编辑国家">⋯</button>
-          </div>
+          </div>` : ""}
         </div>
         <div class="place-grid"></div>`;
 
-      card.querySelector(".add-place").onclick=()=>openPlaceEditor(null,c.id);
-      card.querySelector(".edit-country").onclick=()=>openCountryEditor(c.id);
+      const addPlaceBtn=card.querySelector(".add-place");
+      const editCountryBtn=card.querySelector(".edit-country");
+      if(addPlaceBtn) addPlaceBtn.onclick=()=>openPlaceEditor(null,c.id);
+      if(editCountryBtn) editCountryBtn.onclick=()=>openCountryEditor(c.id);
 
       const grid=card.querySelector(".place-grid");
       places.forEach(p=>{
@@ -330,6 +356,7 @@
     E.pct.textContent=pct+"%";
 
     fillCountrySelect();
+    applyEditMode();
   }
 
   function fillCountrySelect(){
@@ -340,6 +367,7 @@
 
   // ---------------- Editors ----------------
   function openCountryEditor(id=null){
+    if(!state.canEdit) return;
     const c=id?state.countries.find(x=>x.id===id):null;
     E.countryId.value=c?.id||"";
     E.countryFlag.value=c?.flag||"";
@@ -360,6 +388,7 @@
   }
 
   function openPlaceEditor(id=null,countryId=null){
+    if(!state.canEdit) return;
     const p=id?state.places.find(x=>x.id===id):null;
     fillCountrySelect();
     E.placeId.value=p?.id||"";
@@ -409,7 +438,8 @@
     E.memory.value=p.memory_text||"";
     E.albumOneLine.textContent=p.memory_text||p.kind||"";
     E.checkin.classList.toggle("done",!!p.completed);
-    E.checkinText.textContent=p.completed?"已打卡 ✓":"标记为已打卡";
+    E.checkinText.textContent=p.completed?"已打卡 ✓":"尚未打卡";
+    applyEditMode();
   }
 
   function closeAlbum(push=true){
@@ -425,7 +455,7 @@
   }
 
   function scheduleAlbumSave(){
-    if(!state.currentPlace) return;
+    if(!state.currentPlace || !state.canEdit) return;
     clearTimeout(saveTimer);
     saveTimer=setTimeout(async()=>{
       const patch={
@@ -459,6 +489,7 @@
   }
 
   async function cloudPhotoAdd(placeId,file){
+    assertCanEdit();
     const ext=(file.name.split(".").pop()||"jpg").toLowerCase().replace(/[^a-z0-9]/g,"")||"jpg";
     const path=`${placeId}/${uuid()}.${ext}`;
 
@@ -477,6 +508,7 @@
   }
 
   async function cloudPhotoDelete(rec){
+    assertCanEdit();
     const s=await sb.storage.from("trip-photos").remove([rec.storage_path]);
     if(s.error) throw s.error;
     const d=await sb.from("photos").delete().eq("id",rec.id);
@@ -484,6 +516,7 @@
   }
 
   async function cloudPhotoSetCover(placeId,id){
+    assertCanEdit();
     const a=await sb.from("photos").update({is_cover:false}).eq("place_id",placeId);
     if(a.error) throw a.error;
     const b=await sb.from("photos").update({is_cover:true}).eq("id",id);
@@ -524,12 +557,16 @@
         item.className="photo";
         item.innerHTML=`
           <img src="${esc(rec.url)}" alt="">
+          ${state.canEdit ? `
           <div class="photo-actions">
             <button class="cover">${rec.is_cover?"封面 ✓":"设为封面"}</button>
             <button class="del">删除</button>
-          </div>`;
+          </div>` : ""}`;
 
-        item.querySelector(".cover").onclick=async()=>{
+        const coverBtn=item.querySelector(".cover");
+        const delBtn=item.querySelector(".del");
+
+        if(coverBtn) coverBtn.onclick=async()=>{
           try{
             CLOUD
               ? await cloudPhotoSetCover(placeId,rec.id)
@@ -539,7 +576,7 @@
           }catch(e){alert(e.message)}
         };
 
-        item.querySelector(".del").onclick=async()=>{
+        if(delBtn) delBtn.onclick=async()=>{
           if(!confirm("删除这张照片吗？")) return;
           try{
             CLOUD ? await cloudPhotoDelete(rec) : await localPhotoDelete(rec.id);
@@ -558,30 +595,45 @@
   // ---------------- Auth ----------------
   async function updateAuthUI(){
     if(!CLOUD){
+      state.canEdit=true;
       E.authBtn.textContent="本地预览";
-      E.conn.textContent="本地预览模式 · 填入 Supabase 配置后会变成两人实时共享";
-      E.addCountry.disabled=false;
+      E.conn.textContent="本地预览模式";
+      render();
       return;
     }
 
-    let ok=false;
-    try{ok=await requireMember()}catch(e){console.warn(e);alert(e.message)}
+    let canEdit=false;
+    try{
+      canEdit=await requireMember();
+    }catch(e){
+      console.warn(e);
+      state.user=null;
+      canEdit=false;
+    }
 
-    E.authBtn.textContent=ok?"退出":"登录";
-    E.conn.textContent=ok
-      ? `${state.user.email} · 两人共享相册已连接`
-      : "请登录两人共享相册";
-    E.addCountry.disabled=!ok;
+    state.canEdit=canEdit;
 
-    if(ok){
-      await cloudLoad();
-      subscribeRealtime();
-      render();
+    if(state.user){
+      E.authBtn.textContent="退出";
+      E.conn.textContent=canEdit
+        ? `${state.user.email} · 可编辑`
+        : `${state.user.email} · 只读`;
     }else{
-      state.countries=[];
-      state.places=[];
-      render();
-      openDialog(E.authDialog);
+      E.authBtn.textContent="登录";
+      E.conn.textContent="公开浏览 · 登录后可编辑";
+    }
+
+    await cloudLoad();
+    subscribeRealtime();
+    render();
+
+    if(state.currentPlace){
+      const fresh=state.places.find(x=>x.id===state.currentPlace.id);
+      if(fresh){
+        state.currentPlace={...fresh};
+        syncAlbumFields();
+        await renderPhotos();
+      }
     }
   }
 
@@ -599,6 +651,7 @@
       if(error) throw error;
       closeDialog("authDialog");
       await updateAuthUI();
+      if(!state.canEdit) alert("这个账号没有编辑权限，将以只读模式浏览。");
     }catch(e){alert(e.message)}
     finally{E.loginBtn.disabled=false}
   }
@@ -618,7 +671,7 @@
   }
 
   // ---------------- Events ----------------
-  E.addCountry.onclick=()=>openCountryEditor();
+  E.addCountry.onclick=()=>{ if(state.canEdit) openCountryEditor(); };
   $("saveCountryBtn").onclick=submitCountry;
   $("savePlaceBtn").onclick=submitPlace;
   E.authBtn.onclick=authButton;
@@ -646,7 +699,7 @@
   };
 
   E.checkin.onclick=async()=>{
-    if(!state.currentPlace) return;
+    if(!state.currentPlace || !state.canEdit) return;
     try{
       await updatePlace(state.currentPlace.id,{completed:!state.currentPlace.completed});
       syncAlbumFields();
@@ -656,11 +709,11 @@
   [E.date,E.route,E.memory].forEach(x=>x.addEventListener("input",scheduleAlbumSave));
 
   E.editPlace.onclick=()=>{
-    if(state.currentPlace) openPlaceEditor(state.currentPlace.id);
+    if(state.currentPlace && state.canEdit) openPlaceEditor(state.currentPlace.id);
   };
 
   E.deletePlace.onclick=async()=>{
-    if(!state.currentPlace) return;
+    if(!state.currentPlace || !state.canEdit) return;
     if(!confirm(`确定删除「${state.currentPlace.name}」吗？照片记录也会一起删除。`)) return;
     try{
       await deletePlace(state.currentPlace.id);
@@ -669,7 +722,7 @@
   };
 
   E.photoInput.onchange=async e=>{
-    if(!state.currentPlace) return;
+    if(!state.currentPlace || !state.canEdit) return;
     const placeId=state.currentPlace.id;
     const files=[...e.target.files];
     for(const file of files){
