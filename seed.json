@@ -1,0 +1,324 @@
+[
+  {
+    "id": "c-us",
+    "name": "美国",
+    "flag": "🇺🇸",
+    "sort_order": 10,
+    "places": [
+      {
+        "id": "p-glacier",
+        "name": "冰川国家公园",
+        "kind": "国家公园",
+        "completed": true,
+        "sort_order": 10,
+        "route_text": "Hidden Lake · Highline · Grinnell Glacier"
+      },
+      {
+        "id": "p-monument",
+        "name": "纪念碑谷",
+        "kind": "自然景观",
+        "completed": true,
+        "sort_order": 20
+      },
+      {
+        "id": "p-zion",
+        "name": "Zion 国家公园",
+        "kind": "国家公园",
+        "completed": true,
+        "sort_order": 30
+      },
+      {
+        "id": "p-canyonlands",
+        "name": "峡谷地国家公园",
+        "kind": "国家公园",
+        "completed": true,
+        "sort_order": 40
+      },
+      {
+        "id": "p-arches",
+        "name": "拱门国家公园",
+        "kind": "国家公园",
+        "completed": true,
+        "sort_order": 50
+      },
+      {
+        "id": "p-yellowstone",
+        "name": "黄石国家公园",
+        "kind": "国家公园",
+        "completed": true,
+        "sort_order": 60
+      },
+      {
+        "id": "p-grandteton",
+        "name": "大提顿国家公园",
+        "kind": "国家公园",
+        "completed": true,
+        "sort_order": 70
+      },
+      {
+        "id": "p-bryce",
+        "name": "Bryce 国家公园",
+        "kind": "国家公园",
+        "completed": true,
+        "sort_order": 80
+      },
+      {
+        "id": "p-grandcanyon",
+        "name": "大峡谷国家公园",
+        "kind": "国家公园",
+        "completed": true,
+        "sort_order": 90
+      },
+      {
+        "id": "p-muir",
+        "name": "Muir Woods · Dipsea",
+        "kind": "徒步路线",
+        "completed": true,
+        "sort_order": 100
+      }
+    ]
+  },
+  {
+    "id": "c-ca",
+    "name": "加拿大",
+    "flag": "🇨🇦",
+    "sort_order": 20,
+    "places": [
+      {
+        "id": "p-banff",
+        "name": "班夫国家公园",
+        "kind": "国家公园",
+        "completed": false,
+        "sort_order": 10
+      },
+      {
+        "id": "p-jasper",
+        "name": "Jasper 国家公园",
+        "kind": "国家公园",
+        "completed": false,
+        "sort_order": 20
+      },
+      {
+        "id": "p-yoho",
+        "name": "幽鹤国家公园",
+        "kind": "国家公园",
+        "completed": false,
+        "sort_order": 30
+      },
+      {
+        "id": "p-waterton",
+        "name": "Waterton Lake 国家公园",
+        "kind": "国家公园",
+        "completed": false,
+        "sort_order": 40
+      }
+    ]
+  },
+  {
+    "id": "c-ge",
+    "name": "格鲁吉亚",
+    "flag": "🇬🇪",
+    "sort_order": 30,
+    "places": [
+      {
+        "id": "p-tbilisi",
+        "name": "第比利斯",
+        "kind": "城市",
+        "completed": false,
+        "sort_order": 10
+      },
+      {
+        "id": "p-mestia",
+        "name": "梅斯蒂亚",
+        "kind": "城市 / 徒步",
+        "completed": false,
+        "sort_order": 20
+      }
+    ]
+  },
+  {
+    "id": "c-np",
+    "name": "尼泊尔",
+    "flag": "🇳🇵",
+    "sort_order": 40,
+    "places": [
+      {
+        "id": "p-annapurna",
+        "name": "安纳普尔那",
+        "kind": "徒步路线",
+        "completed": false,
+        "sort_order": 10
+      },
+      {
+        "id": "p-poonhill",
+        "name": "布恩山",
+        "kind": "徒步路线",
+        "completed": false,
+        "sort_order": 20
+      }
+    ]
+  },
+  {
+    "id": "c-tmb",
+    "name": "法国 · 瑞士 · 意大利",
+    "flag": "🇫🇷 🇨🇭 🇮🇹",
+    "sort_order": 50,
+    "places": [
+      {
+        "id": "p-tmb",
+        "name": "环勃朗峰",
+        "kind": "徒步路线",
+        "completed": false,
+        "sort_order": 10
+      },
+      {
+        "id": "p-dolomites",
+        "name": "多洛米蒂",
+        "kind": "徒步区域",
+        "completed": false,
+        "sort_order": 20
+      }
+    ]
+  },
+  {
+    "id": "c-es",
+    "name": "西班牙",
+    "flag": "🇪🇸",
+    "sort_order": 60,
+    "places": [
+      {
+        "id": "p-camino",
+        "name": "朝圣之路",
+        "kind": "徒步路线",
+        "completed": false,
+        "sort_order": 10
+      }
+    ]
+  },
+  {
+    "id": "c-jp",
+    "name": "日本",
+    "flag": "🇯🇵",
+    "sort_order": 70,
+    "places": [
+      {
+        "id": "p-kumano",
+        "name": "熊野古道",
+        "kind": "徒步路线",
+        "completed": false,
+        "sort_order": 10
+      },
+      {
+        "id": "p-jalps",
+        "name": "日本阿尔卑斯",
+        "kind": "徒步区域",
+        "completed": false,
+        "sort_order": 20
+      },
+      {
+        "id": "p-fuji",
+        "name": "富士山",
+        "kind": "登山",
+        "completed": false,
+        "sort_order": 30
+      }
+    ]
+  },
+  {
+    "id": "c-tz",
+    "name": "坦桑尼亚",
+    "flag": "🇹🇿",
+    "sort_order": 80,
+    "places": [
+      {
+        "id": "p-kili",
+        "name": "乞力马扎罗",
+        "kind": "登山",
+        "completed": false,
+        "sort_order": 10
+      }
+    ]
+  },
+  {
+    "id": "c-hk",
+    "name": "香港",
+    "flag": "🇭🇰",
+    "sort_order": 90,
+    "places": [
+      {
+        "id": "p-maclehose",
+        "name": "麦理浩径",
+        "kind": "徒步路线",
+        "completed": false,
+        "sort_order": 10
+      }
+    ]
+  },
+  {
+    "id": "c-no",
+    "name": "挪威",
+    "flag": "🇳🇴",
+    "sort_order": 100,
+    "places": [
+      {
+        "id": "p-fjords",
+        "name": "峡湾徒步",
+        "kind": "徒步区域",
+        "completed": false,
+        "sort_order": 10
+      }
+    ]
+  },
+  {
+    "id": "c-is",
+    "name": "冰岛",
+    "flag": "🇮🇸",
+    "sort_order": 110,
+    "places": [
+      {
+        "id": "p-laugavegur",
+        "name": "兰曼线",
+        "kind": "徒步路线",
+        "completed": false,
+        "sort_order": 10
+      }
+    ]
+  },
+  {
+    "id": "c-it",
+    "name": "意大利",
+    "flag": "🇮🇹",
+    "sort_order": 120,
+    "places": [
+      {
+        "id": "p-florence",
+        "name": "佛罗伦萨",
+        "kind": "城市",
+        "completed": false,
+        "sort_order": 10
+      },
+      {
+        "id": "p-venice",
+        "name": "威尼斯",
+        "kind": "城市",
+        "completed": false,
+        "sort_order": 20
+      }
+    ]
+  },
+  {
+    "id": "c-id",
+    "name": "印度尼西亚",
+    "flag": "🇮🇩",
+    "sort_order": 130,
+    "places": [
+      {
+        "id": "p-lombok",
+        "name": "龙目岛",
+        "kind": "海岛 / 徒步",
+        "completed": false,
+        "sort_order": 10
+      }
+    ]
+  }
+]

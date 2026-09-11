@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#f7f2e8">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="山野清单">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="apple-touch-icon" href="./assets/icon-192.png">
+  <link rel="stylesheet" href="./styles.css">
+  <title>山野清单 · Shared Hiking Album</title>
+</head>
+<body>
+  <header class="top-art">
+    <img src="./assets/top-banner.jpg" alt="徒步清单">
+  </header>
+
+  <main class="app-shell">
+    <section class="toolbar">
+      <div>
+        <div class="kicker">SHARED HIKING ALBUM</div>
+        <h1>我们的山野清单</h1>
+        <p id="connectionText" class="subtle">正在连接…</p>
+      </div>
+      <div class="toolbar-actions">
+        <button class="ghost" id="authBtn">登录</button>
+        <button class="primary" id="addCountryBtn">＋ 国家</button>
+      </div>
+    </section>
+
+    <section class="summary">
+      <div>
+        <strong><span id="doneCount">0</span> / <span id="totalCount">0</span></strong>
+        <span>已抵达</span>
+      </div>
+      <div class="progress"><i id="progressBar"></i></div>
+      <span id="percentText">0%</span>
+    </section>
+
+    <section id="countries" class="countries"></section>
+
+    <section class="empty-state hidden" id="emptyState">
+      <div class="empty-dog">🐾</div>
+      <h2>从第一个目的地开始</h2>
+      <p>先添加一个国家，再把想去的徒步路线放进去。</p>
+      <button class="primary" onclick="window.App.openCountryEditor()">＋ 添加国家</button>
+    </section>
+  </main>
+
+  <footer class="bottom-art">
+    <img src="./assets/bottom-banner.jpg" alt="两只狗看向山野">
+  </footer>
+
+  <dialog id="authDialog" class="dialog">
+    <form method="dialog" class="dialog-card" id="authForm" onsubmit="return false">
+      <button class="x" type="button" data-close="authDialog">×</button>
+      <div class="dialog-kicker">ONLY FOR TWO</div>
+      <h2>登录共享相册</h2>
+      <p class="subtle">两个人各用自己的账号，登录后看到同一份清单与照片。</p>
+      <label>邮箱<input id="authEmail" type="email" autocomplete="email" required placeholder="you@example.com"></label>
+      <label>密码<input id="authPassword" type="password" autocomplete="current-password" required placeholder="••••••••"></label>
+      <button class="primary wide" id="loginBtn" type="button">登录</button>
+      <div class="tiny">建议在 Supabase 后台预先创建两位用户，并关闭公开注册。</div>
+    </form>
+  </dialog>
+
+  <dialog id="countryDialog" class="dialog">
+    <form class="dialog-card" id="countryForm" onsubmit="return false">
+      <button class="x" type="button" data-close="countryDialog">×</button>
+      <div class="dialog-kicker">COUNTRY</div>
+      <h2 id="countryDialogTitle">添加国家</h2>
+      <input id="countryId" type="hidden">
+      <div class="two-col">
+        <label>国旗 / Emoji<input id="countryFlag" placeholder="🇨🇭"></label>
+        <label>国家或地区<input id="countryName" required placeholder="瑞士"></label>
+      </div>
+      <button class="primary wide" id="saveCountryBtn" type="button">保存</button>
+      <button class="danger wide hidden" id="deleteCountryBtn" type="button">删除这个国家</button>
+    </form>
+  </dialog>
+
+  <dialog id="placeDialog" class="dialog">
+    <form class="dialog-card" id="placeForm" onsubmit="return false">
+      <button class="x" type="button" data-close="placeDialog">×</button>
+      <div class="dialog-kicker">PLACE / TRAIL</div>
+      <h2 id="placeDialogTitle">添加路线</h2>
+      <input id="placeId" type="hidden">
+      <label>所属国家<select id="placeCountry" required></select></label>
+      <label>地点 / 徒步路线<input id="placeName" required placeholder="例如：日本阿尔卑斯"></label>
+      <label>类型<input id="placeKind" placeholder="徒步路线 / 国家公园 / 城市"></label>
+      <button class="primary wide" id="savePlaceBtn" type="button">保存</button>
+    </form>
+  </dialog>
+
+  <section id="album" class="album" aria-hidden="true">
+    <div id="albumHero" class="album-hero">
+      <img id="albumCover" class="album-cover" alt="">
+      <div class="hero-shade"></div>
+      <button class="round-back" id="albumBack">‹</button>
+      <button class="round-more" id="editPlaceBtn">•••</button>
+      <div class="hero-copy">
+        <div id="albumCountry" class="album-country"></div>
+        <h2 id="albumTitle"></h2>
+        <p id="albumOneLine"></p>
+      </div>
+    </div>
+
+    <div class="album-body">
+      <button id="checkinBtn" class="checkin-card">
+        <span class="check-circle">✓</span>
+        <span><strong id="checkinText">标记为已打卡</strong><small>两个人的首页会同步</small></span>
+      </button>
+
+      <div class="memory-grid">
+        <label class="memory-card">
+          <span>日期</span>
+          <input id="tripDate" type="date">
+        </label>
+        <label class="memory-card">
+          <span>路线 / 行程</span>
+          <input id="routeText" placeholder="例如：Highline Trail">
+        </label>
+        <label class="memory-card full">
+          <span>一句话记录</span>
+          <textarea id="memoryText" rows="3" placeholder="风很大，但这是我见过最漂亮的一段山脊。"></textarea>
+        </label>
+      </div>
+
+      <div class="section-row">
+        <div>
+          <div class="section-kicker">PHOTO ALBUM</div>
+          <h3>旅行照片</h3>
+        </div>
+        <label class="upload-pill">＋ 添加照片<input id="photoInput" type="file" accept="image/*" multiple></label>
+      </div>
+
+      <div id="gallery" class="gallery"></div>
+      <div id="galleryEmpty" class="gallery-empty">还没有照片。下一次旅行，从这里开始记录。</div>
+
+      <div class="danger-zone">
+        <button id="deletePlaceBtn" class="danger">删除这个地点</button>
+      </div>
+    </div>
+  </section>
+
+  <div id="toast" class="toast">已保存</div>
+
+  <script src="./config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
