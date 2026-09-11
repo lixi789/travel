@@ -26,7 +26,7 @@
   let objectUrls = [];
 
   // Fast-path caches
-  const STATE_CACHE_KEY = "hiking.public.state.v7";
+  const STATE_CACHE_KEY = "hiking.public.state.v8";
   const PHOTO_META_TTL = 5 * 60 * 1000;
   const SIGNED_URL_TTL = 45 * 60 * 1000;
   const photoMetaCache = new Map();   // placeId -> {rows, ts}
@@ -79,16 +79,20 @@
     return rows;
   }
 
-  async function cloudSignedUrls(rows){
+  function photoPathFor(row,mode="gallery"){
+    if(mode==="cover"){
+      return row.preview_path || row.thumbnail_path || row.storage_path;
+    }
+    return row.thumbnail_path || row.preview_path || row.storage_path;
+  }
+
+  async function cloudSignedUrls(rows,mode="gallery"){
     if(!rows?.length) return [];
 
-    const missingPaths=[];
-    for(const row of rows){
-      if(!cachedSignedUrl(row.storage_path)) missingPaths.push(row.storage_path);
-    }
+    const paths=rows.map(row=>photoPathFor(row,mode)).filter(Boolean);
+    const missingPaths=[...new Set(paths.filter(path=>!cachedSignedUrl(path)))];
 
     if(missingPaths.length){
-      // One Storage request for all missing URLs instead of N requests.
       const {data,error}=await sb.storage
         .from("trip-photos")
         .createSignedUrls(missingPaths,3600);
@@ -104,15 +108,19 @@
       }
     }
 
-    return rows.map(row=>({
-      ...row,
-      url:cachedSignedUrl(row.storage_path)
-    }));
+    return rows.map(row=>{
+      const signedPath=photoPathFor(row,mode);
+      return {
+        ...row,
+        url:cachedSignedUrl(signedPath),
+        signed_path:signedPath
+      };
+    });
   }
 
-  async function cloudSignedPhoto(rec){
+  async function cloudSignedPhoto(rec,mode="cover"){
     if(!rec) return null;
-    const [signed]=await cloudSignedUrls([rec]);
+    const [signed]=await cloudSignedUrls([rec],mode);
     return signed || {...rec,url:""};
   }
 
@@ -140,7 +148,7 @@
         }
 
         // Warm every album cover in one batch after the home page is already visible.
-        await cloudSignedUrls(covers);
+        await cloudSignedUrls(covers,"cover");
       }catch(e){
         console.warn("Background cover prefetch skipped:",e);
       }finally{
@@ -646,6 +654,67 @@
     },450);
   }
 
+  async function decodeUploadImage(file){
+    if("createImageBitmap" in window){
+      try{
+        return await createImageBitmap(file,{imageOrientation:"from-image"});
+      }catch(e){
+        try{return await createImageBitmap(file)}catch(_){}
+      }
+    }
+
+    return await new Promise((resolve,reject)=>{
+      const url=URL.createObjectURL(file);
+      const img=new Image();
+      img.onload=()=>{
+        URL.revokeObjectURL(url);
+        resolve(img);
+      };
+      img.onerror=()=>{
+        URL.revokeObjectURL(url);
+        reject(new Error("无法读取这张图片"));
+      };
+      img.src=url;
+    });
+  }
+
+  async function makeOptimizedImage(file,maxEdge,quality){
+    const source=await decodeUploadImage(file);
+    const sourceW=source.width || source.naturalWidth;
+    const sourceH=source.height || source.naturalHeight;
+
+    if(!sourceW || !sourceH) throw new Error("图片尺寸读取失败");
+
+    const scale=Math.min(1,maxEdge/Math.max(sourceW,sourceH));
+    const width=Math.max(1,Math.round(sourceW*scale));
+    const height=Math.max(1,Math.round(sourceH*scale));
+
+    const canvas=document.createElement("canvas");
+    canvas.width=width;
+    canvas.height=height;
+
+    const ctx=canvas.getContext("2d",{alpha:false});
+    ctx.imageSmoothingEnabled=true;
+    ctx.imageSmoothingQuality="high";
+    ctx.drawImage(source,0,0,width,height);
+
+    if(typeof source.close==="function") source.close();
+
+    const toBlob=(type,q)=>new Promise(resolve=>canvas.toBlob(resolve,type,q));
+
+    let blob=await toBlob("image/webp",quality);
+    let ext="webp";
+
+    // Very old Safari fallback.
+    if(!blob){
+      blob=await toBlob("image/jpeg",Math.min(.78,quality+.12));
+      ext="jpg";
+    }
+
+    if(!blob) throw new Error("缩略图生成失败");
+    return {blob,ext,width,height};
+  }
+
   // ---------------- Photos ----------------
   async function cloudPhotoList(placeId){
     const rows=await cloudPhotoRows(placeId);
@@ -654,32 +723,76 @@
 
   async function cloudPhotoAdd(placeId,file){
     assertCanEdit();
-    const ext=(file.name.split(".").pop()||"jpg").toLowerCase().replace(/[^a-z0-9]/g,"")||"jpg";
-    const path=`${placeId}/${uuid()}.${ext}`;
 
-    const upload=await sb.storage.from("trip-photos").upload(path,file,{
-      cacheControl:"3600",upsert:false,contentType:file.type||undefined
-    });
-    if(upload.error) throw upload.error;
+    const sourceExt=(file.name.split(".").pop()||"jpg")
+      .toLowerCase().replace(/[^a-z0-9]/g,"")||"jpg";
+    const id=uuid();
+
+    const originalPath=`${placeId}/${id}.${sourceExt}`;
+
+    // Small image for the two-column gallery.
+    const thumb=await makeOptimizedImage(file,520,.56);
+    const thumbnailPath=`${placeId}/thumbs/${id}.${thumb.ext}`;
+
+    // Slightly larger but still lightweight image for the album hero.
+    const preview=await makeOptimizedImage(file,1000,.64);
+    const previewPath=`${placeId}/previews/${id}.${preview.ext}`;
+
+    const uploads=await Promise.all([
+      sb.storage.from("trip-photos").upload(originalPath,file,{
+        cacheControl:"86400",upsert:false,contentType:file.type||undefined
+      }),
+      sb.storage.from("trip-photos").upload(thumbnailPath,thumb.blob,{
+        cacheControl:"31536000",upsert:false,contentType:thumb.blob.type||"image/webp"
+      }),
+      sb.storage.from("trip-photos").upload(previewPath,preview.blob,{
+        cacheControl:"31536000",upsert:false,contentType:preview.blob.type||"image/webp"
+      })
+    ]);
+
+    const uploadError=uploads.find(x=>x.error)?.error;
+    if(uploadError){
+      await sb.storage.from("trip-photos").remove(
+        [originalPath,thumbnailPath,previewPath]
+      ).catch(()=>{});
+      throw uploadError;
+    }
 
     const ins=await sb.from("photos").insert({
-      place_id:placeId,storage_path:path,original_name:file.name
+      place_id:placeId,
+      storage_path:originalPath,
+      thumbnail_path:thumbnailPath,
+      preview_path:previewPath,
+      original_name:file.name
     });
+
     if(ins.error){
-      await sb.storage.from("trip-photos").remove([path]);
+      await sb.storage.from("trip-photos").remove(
+        [originalPath,thumbnailPath,previewPath]
+      );
       throw ins.error;
     }
+
     photoMetaCache.delete(placeId);
   }
 
   async function cloudPhotoDelete(rec){
     assertCanEdit();
-    const s=await sb.storage.from("trip-photos").remove([rec.storage_path]);
+
+    const paths=[
+      rec.storage_path,
+      rec.thumbnail_path,
+      rec.preview_path
+    ].filter(Boolean);
+
+    const s=await sb.storage.from("trip-photos").remove(paths);
     if(s.error) throw s.error;
+
     const d=await sb.from("photos").delete().eq("id",rec.id);
     if(d.error) throw d.error;
+
     photoMetaCache.delete(rec.place_id);
-    signedUrlCache.delete(rec.storage_path);
+    paths.forEach(path=>signedUrlCache.delete(path));
   }
 
   async function cloudPhotoSetCover(placeId,id){
@@ -710,7 +823,7 @@
 
         const coverRow = getCoverRow(rows);
         if(coverRow){
-          const signedCover = await cloudSignedPhoto(coverRow);
+          const signedCover = await cloudSignedPhoto(coverRow,"cover");
           if(!state.currentPlace||state.currentPlace.id!==placeId) return;
           coverUrl = signedCover.url || "";
           setAlbumCover(coverUrl);
@@ -718,7 +831,7 @@
           setAlbumCover("");
         }
 
-        const signedRows = await cloudSignedUrls(rows);
+        const signedRows = await cloudSignedUrls(rows,"gallery");
         if(!state.currentPlace||state.currentPlace.id!==placeId) return;
         rows = signedRows;
       }else{
