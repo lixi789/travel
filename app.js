@@ -1029,7 +1029,9 @@
     }catch(e){alert(e.message)}
   };
 
-  [E.date,E.route,E.memory].forEach(x=>x.addEventListener("input",scheduleAlbumSave));
+  E.date.addEventListener("change", scheduleAlbumSave);
+  E.route.addEventListener("blur", scheduleAlbumSave);
+  E.memory.addEventListener("blur", scheduleAlbumSave);
 
   E.editPlace.onclick=()=>{
     if(state.currentPlace && state.canEdit) openPlaceEditor(state.currentPlace.id);
