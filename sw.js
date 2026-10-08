@@ -1,4 +1,4 @@
-const CACHE='shared-hiking-v9-lightbox';
+const CACHE='shared-hiking-v10-route-folders';
 const CORE=[
   './',
   './index.html',

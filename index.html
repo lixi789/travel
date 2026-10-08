@@ -102,6 +102,32 @@
     </form>
   </dialog>
 
+  <dialog id="routeDialog" class="dialog">
+    <form class="dialog-card" onsubmit="return false">
+      <button class="x" type="button" data-close="routeDialog">×</button>
+      <div class="dialog-kicker">TRAIL FOLDER</div>
+      <h2 id="routeDialogTitle">添加徒步路线</h2>
+      <input id="routeId" type="hidden">
+      <label>路线名称<input id="routeName" required placeholder="例如：Highline Trail"></label>
+      <button class="primary wide" id="saveRouteBtn" type="button">保存</button>
+      <button class="danger wide hidden" id="deleteRouteBtn" type="button">删除这条路线</button>
+    </form>
+  </dialog>
+
+  <dialog id="photoRouteDialog" class="dialog">
+    <form class="dialog-card" onsubmit="return false">
+      <button class="x" type="button" data-close="photoRouteDialog">×</button>
+      <div class="dialog-kicker">PHOTO FOLDER</div>
+      <h2>照片归类</h2>
+      <input id="photoRoutePhotoId" type="hidden">
+      <label>归入路线
+        <select id="photoRouteSelect"></select>
+      </label>
+      <p class="tiny">Happy trip 会始终显示这个地点的全部照片。选择具体路线后，这张照片也会出现在对应路线里。</p>
+      <button class="primary wide" id="savePhotoRouteBtn" type="button">保存归类</button>
+    </form>
+  </dialog>
+
   <section id="album" class="album" aria-hidden="true">
     <div id="albumHero" class="album-hero">
       <img id="albumCover" class="album-cover" alt="" decoding="async" fetchpriority="high">
@@ -135,6 +161,21 @@
           <textarea id="memoryText" rows="3" placeholder="风很大，但这是我见过最漂亮的一段山脊。"></textarea>
         </label>
       </div>
+
+      <section class="route-albums">
+        <div class="route-albums-head">
+          <div>
+            <div class="section-kicker">TRAIL FOLDERS</div>
+            <h3>徒步路线</h3>
+          </div>
+          <div class="route-album-actions">
+            <button id="manageRouteBtn" class="route-manage hidden" type="button" title="管理当前路线">•••</button>
+            <button id="addRouteBtn" class="route-add hidden" type="button">＋ 路线</button>
+          </div>
+        </div>
+        <div id="routeTabs" class="route-tabs" aria-label="徒步路线"></div>
+        <div id="routeHint" class="route-hint">Happy trip · 展示这个地点的所有照片</div>
+      </section>
 
       <div class="section-row">
         <div>

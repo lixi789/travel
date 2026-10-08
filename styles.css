@@ -1054,3 +1054,147 @@ h1{
   .lightbox-prev{left:7px}
   .lightbox-next{right:7px}
 }
+
+
+/* ---------- Route folders inside each place ---------- */
+.route-albums{
+  margin:4px 0 22px;
+  padding:13px;
+  border:1px solid var(--line);
+  border-radius:18px;
+  background:rgba(255,253,248,.78);
+}
+
+.route-albums-head{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:11px;
+}
+
+.route-albums-head h3{
+  margin:3px 0 0;
+  font-size:21px;
+  letter-spacing:-.03em;
+}
+
+.route-album-actions{
+  display:flex;
+  align-items:center;
+  gap:7px;
+}
+
+.route-add,
+.route-manage{
+  min-height:40px;
+  border:0;
+  border-radius:999px;
+  font-weight:800;
+  cursor:pointer;
+}
+
+.route-add{
+  padding:8px 12px;
+  color:#42614b;
+  background:#eef3ee;
+}
+
+.route-manage{
+  width:40px;
+  padding:0;
+  color:#68645b;
+  background:#f0ebe2;
+}
+
+.route-tabs{
+  display:flex;
+  gap:8px;
+  overflow-x:auto;
+  overscroll-behavior-x:contain;
+  scrollbar-width:none;
+  padding:2px 1px 5px;
+  -webkit-overflow-scrolling:touch;
+}
+
+.route-tabs::-webkit-scrollbar{display:none}
+
+.route-tab{
+  flex:0 0 auto;
+  min-height:44px;
+  max-width:220px;
+  border:1px solid #ded6ca;
+  border-radius:15px;
+  padding:8px 13px;
+  background:#fff;
+  color:var(--ink);
+  text-align:left;
+  cursor:pointer;
+  box-shadow:0 3px 12px rgba(49,43,34,.035);
+}
+
+.route-tab.active{
+  color:white;
+  background:var(--green);
+  border-color:var(--green);
+  box-shadow:0 7px 16px rgba(60,88,68,.16);
+}
+
+.route-tab-main{
+  display:block;
+  max-width:180px;
+  overflow:hidden;
+  white-space:nowrap;
+  text-overflow:ellipsis;
+  font-size:13px;
+  line-height:1.25;
+  font-weight:850;
+}
+
+.route-tab small{
+  display:block;
+  margin-top:2px;
+  font-size:9.5px;
+  opacity:.72;
+}
+
+.route-hint{
+  margin-top:7px;
+  color:var(--muted);
+  font-size:10.5px;
+  line-height:1.45;
+}
+
+#photoRouteDialog select{
+  width:100%;
+  min-height:48px;
+  margin-top:7px;
+  border:1px solid var(--line);
+  background:white;
+  border-radius:14px;
+  padding:11px 13px;
+  outline:none;
+  color:var(--ink);
+  font-size:16px;
+}
+
+.photo-actions{
+  flex-wrap:wrap;
+  justify-content:flex-end;
+}
+
+.photo-actions .classify{
+  margin-right:auto;
+}
+
+@media(min-width:700px){
+  .route-albums{
+    padding:15px;
+    border-radius:20px;
+  }
+
+  .route-tabs{
+    flex-wrap:wrap;
+    overflow:visible;
+  }
+}

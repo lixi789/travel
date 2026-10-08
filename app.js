@@ -16,11 +16,14 @@
     album:$("album"), albumHero:$("albumHero"), albumCover:$("albumCover"), albumCountry:$("albumCountry"),
     albumTitle:$("albumTitle"), albumOneLine:$("albumOneLine"), checkin:$("checkinBtn"),
     checkinText:$("checkinText"), date:$("tripDate"), route:$("routeText"), memory:$("memoryText"),
+    routeTabs:$("routeTabs"), routeHint:$("routeHint"), addRoute:$("addRouteBtn"), manageRoute:$("manageRouteBtn"),
+    routeDialog:$("routeDialog"), routeId:$("routeId"), routeName:$("routeName"), deleteRoute:$("deleteRouteBtn"),
+    photoRouteDialog:$("photoRouteDialog"), photoRoutePhotoId:$("photoRoutePhotoId"), photoRouteSelect:$("photoRouteSelect"),
     galleryLoader:$("galleryLoader"), gallery:$("gallery"), galleryEmpty:$("galleryEmpty"), photoInput:$("photoInput"),
     editPlace:$("editPlaceBtn"), deletePlace:$("deletePlaceBtn"), toast:$("toast")
   };
 
-  const state = { countries:[], places:[], currentPlace:null, user:null, photos:[], canEdit:false };
+  const state = { countries:[], places:[], routes:[], activeRouteId:null, currentPlace:null, user:null, photos:[], canEdit:false };
   let realtimeChannel = null;
   let saveTimer = null;
   let objectUrls = [];
@@ -28,7 +31,7 @@
   let lightboxLoadToken = 0;
 
   // Fast-path caches
-  const STATE_CACHE_KEY = "hiking.public.state.v8";
+  const STATE_CACHE_KEY = "hiking.public.state.v10";
   const PHOTO_META_TTL = 5 * 60 * 1000;
   const SIGNED_URL_TTL = 45 * 60 * 1000;
   const photoMetaCache = new Map();   // placeId -> {rows, ts}
@@ -357,6 +360,12 @@
 
     const emptyAdd = E.empty.querySelector("button");
     if(emptyAdd) emptyAdd.classList.toggle("hidden", !state.canEdit);
+
+    if(E.addRoute) E.addRoute.classList.toggle("hidden", !state.canEdit || !state.currentPlace);
+    if(E.manageRoute) E.manageRoute.classList.toggle(
+      "hidden",
+      !state.canEdit || !state.currentPlace || !state.activeRouteId
+    );
   }
 
   // ---------------- Local preview backend ----------------
@@ -368,6 +377,7 @@
       const parsed = JSON.parse(saved);
       state.countries = parsed.countries || [];
       state.places = parsed.places || [];
+      state.routes = parsed.routes || [];
     } else {
       const seed = await fetch("./seed.json").then(r => r.json());
       state.countries = seed.map(c => ({
@@ -383,7 +393,7 @@
   }
   function localPersist(){
     localStorage.setItem(LOCAL_DATA_KEY, JSON.stringify({
-      countries:state.countries, places:state.places
+      countries:state.countries, places:state.places, routes:state.routes
     }));
   }
   function openLocalPhotoDB(){
@@ -411,9 +421,9 @@
     db.close();
     return rows.sort((a,b)=>a.created_at-b.created_at);
   }
-  async function localPhotoAdd(placeId,file){
+  async function localPhotoAdd(placeId,file,routeId=null){
     const db=await openLocalPhotoDB();
-    const rec={id:uuid(),place_id:placeId,blob:file,name:file.name,created_at:Date.now(),is_cover:false};
+    const rec={id:uuid(),place_id:placeId,route_id:routeId||null,blob:file,name:file.name,created_at:Date.now(),is_cover:false};
     await new Promise((resolve,reject)=>{
       const tx=db.transaction("photos","readwrite");
       tx.objectStore("photos").put(rec);
@@ -440,6 +450,221 @@
       tx.oncomplete=resolve; tx.onerror=()=>reject(tx.error);
     });
     db.close();
+  }
+
+  // ---------------- Route folders ----------------
+  async function loadRoutesForPlace(placeId){
+    if(!placeId){
+      state.routes=[];
+      return;
+    }
+
+    if(CLOUD){
+      const {data,error}=await sb.from("place_routes")
+        .select("*")
+        .eq("place_id",placeId)
+        .order("sort_order")
+        .order("created_at");
+      if(error) throw error;
+      state.routes=data||[];
+    }else{
+      state.routes=(state.routes||[])
+        .filter(r=>r.place_id===placeId)
+        .sort((a,b)=>(a.sort_order||0)-(b.sort_order||0));
+    }
+  }
+
+  function routeNameById(id){
+    return state.routes.find(r=>r.id===id)?.name || "";
+  }
+
+  function renderRouteTabs(){
+    if(!E.routeTabs) return;
+
+    E.routeTabs.innerHTML="";
+
+    const all=document.createElement("button");
+    all.type="button";
+    all.className="route-tab"+(!state.activeRouteId?" active":"");
+    all.innerHTML=`<span class="route-tab-main">Happy trip</span><small>全部照片</small>`;
+    all.onclick=()=>{
+      if(!state.activeRouteId) return;
+      state.activeRouteId=null;
+      renderRouteTabs();
+      renderPhotos();
+    };
+    E.routeTabs.appendChild(all);
+
+    for(const route of state.routes){
+      const btn=document.createElement("button");
+      btn.type="button";
+      btn.className="route-tab"+(state.activeRouteId===route.id?" active":"");
+      btn.innerHTML=`<span class="route-tab-main">${esc(route.name)}</span>`;
+      btn.onclick=()=>{
+        if(state.activeRouteId===route.id) return;
+        state.activeRouteId=route.id;
+        renderRouteTabs();
+        renderPhotos();
+      };
+      E.routeTabs.appendChild(btn);
+    }
+
+    if(state.activeRouteId && !state.routes.some(r=>r.id===state.activeRouteId)){
+      state.activeRouteId=null;
+    }
+
+    if(E.routeHint){
+      E.routeHint.textContent=state.activeRouteId
+        ? `${routeNameById(state.activeRouteId)} · 仅展示这条路线的照片`
+        : "Happy trip · 展示这个地点的所有照片";
+    }
+
+    applyEditMode();
+  }
+
+  function openRouteEditor(id=null){
+    if(!state.canEdit || !state.currentPlace) return;
+    const route=id?state.routes.find(r=>r.id===id):null;
+    E.routeId.value=route?.id||"";
+    E.routeName.value=route?.name||"";
+    $("routeDialogTitle").textContent=route?"编辑徒步路线":"添加徒步路线";
+    E.deleteRoute.classList.toggle("hidden",!route);
+    openDialog(E.routeDialog);
+    setTimeout(()=>E.routeName.focus(),50);
+  }
+
+  async function saveRouteFolder(){
+    assertCanEdit();
+    const name=E.routeName.value.trim();
+    if(!name || !state.currentPlace) return;
+
+    const id=E.routeId.value||null;
+    const placeId=state.currentPlace.id;
+
+    if(CLOUD){
+      if(id){
+        const {error}=await sb.from("place_routes")
+          .update({name,updated_at:new Date().toISOString()})
+          .eq("id",id);
+        if(error) throw error;
+      }else{
+        const next=Math.max(0,...state.routes.map(r=>r.sort_order||0))+10;
+        const {data,error}=await sb.from("place_routes")
+          .insert({place_id:placeId,name,sort_order:next})
+          .select()
+          .single();
+        if(error) throw error;
+        state.activeRouteId=data.id;
+      }
+      await loadRoutesForPlace(placeId);
+    }else{
+      if(id){
+        const route=state.routes.find(r=>r.id===id);
+        if(route) route.name=name;
+      }else{
+        const route={
+          id:uuid(),place_id:placeId,name,
+          sort_order:Math.max(0,...state.routes.map(r=>r.sort_order||0))+10,
+          created_at:Date.now()
+        };
+        state.routes.push(route);
+        state.activeRouteId=route.id;
+      }
+      localPersist();
+    }
+
+    closeDialog("routeDialog");
+    renderRouteTabs();
+    await renderPhotos();
+    toast("路线已保存");
+  }
+
+  async function deleteRouteFolder(){
+    assertCanEdit();
+    const id=E.routeId.value;
+    const route=state.routes.find(r=>r.id===id);
+    if(!route || !state.currentPlace) return;
+    if(!confirm(`删除路线「${route.name}」吗？照片不会删除，仍会保留在 Happy trip 中。`)) return;
+
+    const placeId=state.currentPlace.id;
+
+    if(CLOUD){
+      const {error}=await sb.from("place_routes").delete().eq("id",id);
+      if(error) throw error;
+      photoMetaCache.delete(placeId);
+      await loadRoutesForPlace(placeId);
+    }else{
+      const allRows=await localPhotoList(placeId);
+      const db=await openLocalPhotoDB();
+      await new Promise((resolve,reject)=>{
+        const tx=db.transaction("photos","readwrite");
+        const s=tx.objectStore("photos");
+        allRows.forEach(row=>{
+          if(row.route_id===id){
+            row.route_id=null;
+            s.put(row);
+          }
+        });
+        tx.oncomplete=resolve;
+        tx.onerror=()=>reject(tx.error);
+      });
+      db.close();
+      state.routes=state.routes.filter(r=>r.id!==id);
+      localPersist();
+    }
+
+    if(state.activeRouteId===id) state.activeRouteId=null;
+    closeDialog("routeDialog");
+    renderRouteTabs();
+    await renderPhotos();
+    toast("路线已删除");
+  }
+
+  function openPhotoRouteEditor(photoId){
+    if(!state.canEdit) return;
+    const rec=state.photos.find(p=>p.id===photoId);
+    if(!rec) return;
+
+    E.photoRoutePhotoId.value=photoId;
+    E.photoRouteSelect.innerHTML=[
+      `<option value="">不归入具体路线（仅在 Happy trip 总览）</option>`,
+      ...state.routes.map(r=>`<option value="${esc(r.id)}">${esc(r.name)}</option>`)
+    ].join("");
+    E.photoRouteSelect.value=rec.route_id||"";
+    openDialog(E.photoRouteDialog);
+  }
+
+  async function savePhotoRoute(){
+    assertCanEdit();
+    const photoId=E.photoRoutePhotoId.value;
+    const routeId=E.photoRouteSelect.value||null;
+    if(!photoId || !state.currentPlace) return;
+
+    if(CLOUD){
+      const {error}=await sb.from("photos")
+        .update({route_id:routeId})
+        .eq("id",photoId);
+      if(error) throw error;
+      photoMetaCache.delete(state.currentPlace.id);
+    }else{
+      const rows=await localPhotoList(state.currentPlace.id);
+      const rec=rows.find(r=>r.id===photoId);
+      if(rec){
+        rec.route_id=routeId;
+        const db=await openLocalPhotoDB();
+        await new Promise((resolve,reject)=>{
+          const tx=db.transaction("photos","readwrite");
+          tx.objectStore("photos").put(rec);
+          tx.oncomplete=resolve;
+          tx.onerror=()=>reject(tx.error);
+        });
+        db.close();
+      }
+    }
+
+    closeDialog("photoRouteDialog");
+    await renderPhotos();
+    toast(routeId?"已归入路线":"已取消具体路线归类");
   }
 
   // ---------------- Supabase backend ----------------
@@ -486,6 +711,17 @@
         const placeId=payload.new?.place_id || payload.old?.place_id;
         if(placeId) photoMetaCache.delete(placeId);
         if(state.currentPlace && (!placeId || state.currentPlace.id===placeId)) renderPhotos();
+      })
+      .on("postgres_changes",{event:"*",schema:"public",table:"place_routes"}, async payload => {
+        const placeId=payload.new?.place_id || payload.old?.place_id;
+        if(state.currentPlace && (!placeId || state.currentPlace.id===placeId)){
+          await loadRoutesForPlace(state.currentPlace.id);
+          if(state.activeRouteId && !state.routes.some(r=>r.id===state.activeRouteId)){
+            state.activeRouteId=null;
+          }
+          renderRouteTabs();
+          renderPhotos();
+        }
       })
       .subscribe();
   }
@@ -718,12 +954,25 @@
   async function openAlbum(id,push=true){
     const p=state.places.find(x=>x.id===id);
     if(!p) return;
+
     state.currentPlace={...p};
+    state.routes=[];
+    state.activeRouteId=null;
+
     syncAlbumFields();
+    renderRouteTabs();
+
     E.album.classList.add("open");
     E.album.setAttribute("aria-hidden","false");
     document.body.style.overflow="hidden";
+
+    const routeLoad=loadRoutesForPlace(id)
+      .then(()=>renderRouteTabs())
+      .catch(e=>console.error(e));
+
     await renderPhotos();
+    await routeLoad;
+
     if(push) history.pushState({place:id},"","#place="+encodeURIComponent(id));
   }
 
@@ -750,6 +999,8 @@
     clearObjectUrls();
     state.currentPlace=null;
     state.photos=[];
+    state.routes=[];
+    state.activeRouteId=null;
     if(push&&location.hash.startsWith("#place=")){
       history.pushState({},"",location.pathname+location.search);
     }
@@ -840,7 +1091,7 @@
     return cloudSignedUrls(rows);
   }
 
-  async function cloudPhotoAdd(placeId,file){
+  async function cloudPhotoAdd(placeId,file,routeId=null){
     assertCanEdit();
 
     const sourceExt=(file.name.split(".").pop()||"jpg")
@@ -879,6 +1130,7 @@
 
     const ins=await sb.from("photos").insert({
       place_id:placeId,
+      route_id:routeId||null,
       storage_path:originalPath,
       thumbnail_path:thumbnailPath,
       preview_path:previewPath,
@@ -926,6 +1178,7 @@
   async function renderPhotos(){
     if(!state.currentPlace) return;
     const placeId=state.currentPlace.id;
+    const routeId=state.activeRouteId||null;
     E.gallery.innerHTML="";
     E.galleryEmpty.classList.add("hidden");
     clearObjectUrls();
@@ -936,14 +1189,15 @@
       let coverUrl="";
 
       if(CLOUD){
-        rows = await cloudPhotoRows(placeId);
+        const allRows = await cloudPhotoRows(placeId);
+        rows = routeId ? allRows.filter(r=>r.route_id===routeId) : allRows;
 
-        if(!state.currentPlace||state.currentPlace.id!==placeId) return;
+        if(!state.currentPlace||state.currentPlace.id!==placeId||state.activeRouteId!==routeId) return;
 
         const coverRow = getCoverRow(rows);
         if(coverRow){
           const signedCover = await cloudSignedPhoto(coverRow,"cover");
-          if(!state.currentPlace||state.currentPlace.id!==placeId) return;
+          if(!state.currentPlace||state.currentPlace.id!==placeId||state.activeRouteId!==routeId) return;
           coverUrl = signedCover.url || "";
           setAlbumCover(coverUrl);
         }else{
@@ -951,11 +1205,12 @@
         }
 
         const signedRows = await cloudSignedUrls(rows,"gallery");
-        if(!state.currentPlace||state.currentPlace.id!==placeId) return;
+        if(!state.currentPlace||state.currentPlace.id!==placeId||state.activeRouteId!==routeId) return;
         rows = signedRows;
       }else{
-        rows = await localPhotoList(placeId);
-        if(!state.currentPlace||state.currentPlace.id!==placeId) return;
+        const allRows = await localPhotoList(placeId);
+        rows = routeId ? allRows.filter(r=>r.route_id===routeId) : allRows;
+        if(!state.currentPlace||state.currentPlace.id!==placeId||state.activeRouteId!==routeId) return;
 
         const coverRow = getCoverRow(rows);
         if(coverRow?.blob){
@@ -973,7 +1228,7 @@
         });
       }
 
-      if(!state.currentPlace||state.currentPlace.id!==placeId) return;
+      if(!state.currentPlace||state.currentPlace.id!==placeId||state.activeRouteId!==routeId) return;
 
       state.photos=rows;
       E.gallery.innerHTML="";
@@ -993,13 +1248,20 @@
           <img src="${esc(rec.url)}" alt="" loading="lazy" decoding="async">
           ${state.canEdit ? `
           <div class="photo-actions">
+            <button class="classify">归类</button>
             <button class="cover">${rec.is_cover?"封面 ✓":"设为封面"}</button>
             <button class="del">删除</button>
           </div>` : ""}`;
 
         const photoImg=item.querySelector("img");
+        const classifyBtn=item.querySelector(".classify");
         const coverBtn=item.querySelector(".cover");
         const delBtn=item.querySelector(".del");
+
+        if(classifyBtn) classifyBtn.onclick=e=>{
+          e.stopPropagation();
+          openPhotoRouteEditor(rec.id);
+        };
 
         if(photoImg){
           photoImg.onclick=()=>openLightbox(index);
@@ -1036,7 +1298,9 @@
       });
 
       if(!rows.length){
-        E.galleryEmpty.textContent="还没有照片。下一次旅行，从这里开始记录。";
+        E.galleryEmpty.textContent=routeId
+          ? "这条徒步路线还没有照片。"
+          : "还没有照片。下一次旅行，从这里开始记录。";
       }
     }catch(e){
       console.error(e);
@@ -1088,6 +1352,11 @@
       if(fresh){
         state.currentPlace={...fresh};
         syncAlbumFields();
+        await loadRoutesForPlace(fresh.id);
+        if(state.activeRouteId && !state.routes.some(r=>r.id===state.activeRouteId)){
+          state.activeRouteId=null;
+        }
+        renderRouteTabs();
         await renderPhotos();
       }
     }
@@ -1144,6 +1413,17 @@
 
   // ---------------- Events ----------------
   E.addCountry.onclick=()=>{ if(state.canEdit) openCountryEditor(); };
+  E.addRoute.onclick=()=>openRouteEditor();
+  E.manageRoute.onclick=()=>{ if(state.activeRouteId) openRouteEditor(state.activeRouteId); };
+  $("saveRouteBtn").onclick=async()=>{
+    try{await saveRouteFolder()}catch(e){alert(e.message)}
+  };
+  E.deleteRoute.onclick=async()=>{
+    try{await deleteRouteFolder()}catch(e){alert(e.message)}
+  };
+  $("savePhotoRouteBtn").onclick=async()=>{
+    try{await savePhotoRoute()}catch(e){alert(e.message)}
+  };
   $("saveCountryBtn").onclick=submitCountry;
   $("savePlaceBtn").onclick=submitPlace;
   E.authBtn.onclick=authButton;
@@ -1202,7 +1482,9 @@
     for(const file of files){
       if(!file.type.startsWith("image/")) continue;
       try{
-        CLOUD ? await cloudPhotoAdd(placeId,file) : await localPhotoAdd(placeId,file);
+        CLOUD
+          ? await cloudPhotoAdd(placeId,file,state.activeRouteId)
+          : await localPhotoAdd(placeId,file,state.activeRouteId);
       }catch(err){
         alert(`上传 ${file.name} 失败：${err.message}`);
       }
