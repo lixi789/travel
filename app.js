@@ -24,6 +24,8 @@
   let realtimeChannel = null;
   let saveTimer = null;
   let objectUrls = [];
+  let lightboxIndex = -1;
+  let lightboxLoadToken = 0;
 
   // Fast-path caches
   const STATE_CACHE_KEY = "hiking.public.state.v8";
@@ -80,6 +82,9 @@
   }
 
   function photoPathFor(row,mode="gallery"){
+    if(mode==="original"){
+      return row.storage_path;
+    }
     if(mode==="cover"){
       return row.preview_path || row.thumbnail_path || row.storage_path;
     }
@@ -217,6 +222,119 @@
   function rememberSignedUrl(path,url){
     if(!url) return;
     signedUrlCache.set(path,{url,expires:Date.now()+SIGNED_URL_TTL});
+  }
+
+  function ensureLightbox(){
+    let box=document.getElementById("photoLightbox");
+    if(box) return box;
+
+    box=document.createElement("div");
+    box.id="photoLightbox";
+    box.className="photo-lightbox";
+    box.setAttribute("aria-hidden","true");
+    box.innerHTML=`
+      <button class="lightbox-close" type="button" aria-label="关闭大图">×</button>
+      <button class="lightbox-nav lightbox-prev" type="button" aria-label="上一张">‹</button>
+      <div class="lightbox-stage">
+        <div class="lightbox-spinner" aria-hidden="true"></div>
+        <img class="lightbox-image" alt="">
+      </div>
+      <button class="lightbox-nav lightbox-next" type="button" aria-label="下一张">›</button>
+      <div class="lightbox-count"></div>
+    `;
+
+    document.body.appendChild(box);
+
+    box.querySelector(".lightbox-close").onclick=closeLightbox;
+    box.querySelector(".lightbox-prev").onclick=()=>showLightboxPhoto(lightboxIndex-1);
+    box.querySelector(".lightbox-next").onclick=()=>showLightboxPhoto(lightboxIndex+1);
+
+    box.addEventListener("click",e=>{
+      if(e.target===box || e.target.classList.contains("lightbox-stage")){
+        closeLightbox();
+      }
+    });
+
+    return box;
+  }
+
+  function closeLightbox(){
+    const box=document.getElementById("photoLightbox");
+    if(!box) return;
+    lightboxLoadToken++;
+    lightboxIndex=-1;
+    box.classList.remove("open");
+    box.setAttribute("aria-hidden","true");
+    box.querySelector(".lightbox-image").removeAttribute("src");
+  }
+
+  async function showLightboxPhoto(index){
+    if(index<0 || index>=state.photos.length) return;
+
+    const box=ensureLightbox();
+    const img=box.querySelector(".lightbox-image");
+    const spinner=box.querySelector(".lightbox-spinner");
+    const prev=box.querySelector(".lightbox-prev");
+    const next=box.querySelector(".lightbox-next");
+    const count=box.querySelector(".lightbox-count");
+
+    lightboxIndex=index;
+    const token=++lightboxLoadToken;
+
+    prev.classList.toggle("hidden",index===0);
+    next.classList.toggle("hidden",index===state.photos.length-1);
+    count.textContent=`${index+1} / ${state.photos.length}`;
+
+    img.classList.remove("ready");
+    spinner.classList.remove("hidden");
+    img.removeAttribute("src");
+
+    box.classList.add("open");
+    box.setAttribute("aria-hidden","false");
+
+    const rec=state.photos[index];
+
+    try{
+      let url="";
+      if(CLOUD){
+        const [full]=await cloudSignedUrls([rec],"original");
+        url=full?.url||"";
+      }else{
+        // Local preview already uses an object URL for the original image.
+        url=rec.url||"";
+      }
+
+      if(token!==lightboxLoadToken || lightboxIndex!==index) return;
+
+      if(!url) throw new Error("无法读取原图");
+
+      img.onload=()=>{
+        if(token!==lightboxLoadToken) return;
+        spinner.classList.add("hidden");
+        img.classList.add("ready");
+      };
+      img.onerror=()=>{
+        if(token!==lightboxLoadToken) return;
+        spinner.classList.add("hidden");
+      };
+      img.src=url;
+
+      // Quietly warm the neighboring originals after the selected image starts.
+      if(CLOUD){
+        const neighbors=[];
+        if(index>0) neighbors.push(state.photos[index-1]);
+        if(index<state.photos.length-1) neighbors.push(state.photos[index+1]);
+        if(neighbors.length) cloudSignedUrls(neighbors,"original").catch(()=>{});
+      }
+    }catch(e){
+      spinner.classList.add("hidden");
+      console.error(e);
+      toast("大图加载失败");
+    }
+  }
+
+  function openLightbox(index){
+    showLightboxPhoto(index);
   }
 
   function assertCanEdit(){
@@ -625,6 +743,7 @@
   }
 
   function closeAlbum(push=true){
+    closeLightbox();
     E.album.classList.remove("open");
     E.album.setAttribute("aria-hidden","true");
     document.body.style.overflow="";
@@ -867,7 +986,7 @@
         setAlbumCover(cover?.url||"");
       }
 
-      rows.forEach(rec=>{
+      rows.forEach((rec,index)=>{
         const item=document.createElement("div");
         item.className="photo";
         item.innerHTML=`
@@ -878,8 +997,22 @@
             <button class="del">删除</button>
           </div>` : ""}`;
 
+        const photoImg=item.querySelector("img");
         const coverBtn=item.querySelector(".cover");
         const delBtn=item.querySelector(".del");
+
+        if(photoImg){
+          photoImg.onclick=()=>openLightbox(index);
+          photoImg.setAttribute("role","button");
+          photoImg.setAttribute("tabindex","0");
+          photoImg.setAttribute("aria-label",`查看第 ${index+1} 张完整大图`);
+          photoImg.onkeydown=e=>{
+            if(e.key==="Enter" || e.key===" "){
+              e.preventDefault();
+              openLightbox(index);
+            }
+          };
+        }
 
         if(coverBtn) coverBtn.onclick=async()=>{
           try{
@@ -992,6 +1125,22 @@
       openDialog(E.authDialog);
     }
   }
+
+  document.addEventListener("keydown",e=>{
+    const box=document.getElementById("photoLightbox");
+    if(!box?.classList.contains("open")) return;
+
+    if(e.key==="Escape"){
+      e.preventDefault();
+      closeLightbox();
+    }else if(e.key==="ArrowLeft" && lightboxIndex>0){
+      e.preventDefault();
+      showLightboxPhoto(lightboxIndex-1);
+    }else if(e.key==="ArrowRight" && lightboxIndex<state.photos.length-1){
+      e.preventDefault();
+      showLightboxPhoto(lightboxIndex+1);
+    }
+  });
 
   // ---------------- Events ----------------
   E.addCountry.onclick=()=>{ if(state.canEdit) openCountryEditor(); };

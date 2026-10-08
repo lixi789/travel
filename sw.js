@@ -1,4 +1,4 @@
-const CACHE='shared-hiking-v8-thumbnails';
+const CACHE='shared-hiking-v9-lightbox';
 const CORE=[
   './',
   './index.html',
