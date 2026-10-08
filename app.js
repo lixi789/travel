@@ -19,6 +19,9 @@
     routeTabs:$("routeTabs"), routeHint:$("routeHint"), addRoute:$("addRouteBtn"), manageRoute:$("manageRouteBtn"),
     routeDialog:$("routeDialog"), routeId:$("routeId"), routeName:$("routeName"), deleteRoute:$("deleteRouteBtn"),
     photoRouteDialog:$("photoRouteDialog"), photoRoutePhotoId:$("photoRoutePhotoId"), photoRouteSelect:$("photoRouteSelect"),
+    addExistingPhotos:$("addExistingPhotosBtn"), existingPhotoDialog:$("existingPhotoDialog"),
+    existingPhotoGrid:$("existingPhotoGrid"), existingPhotoEmpty:$("existingPhotoEmpty"),
+    existingPhotoRouteName:$("existingPhotoRouteName"), addSelectedExistingPhotos:$("addSelectedExistingPhotosBtn"),
     galleryLoader:$("galleryLoader"), gallery:$("gallery"), galleryEmpty:$("galleryEmpty"), photoInput:$("photoInput"),
     editPlace:$("editPlaceBtn"), deletePlace:$("deletePlaceBtn"), toast:$("toast")
   };
@@ -29,9 +32,11 @@
   let objectUrls = [];
   let lightboxIndex = -1;
   let lightboxLoadToken = 0;
+  let existingPhotoSelection = new Set();
+  let pickerObjectUrls = [];
 
   // Fast-path caches
-  const STATE_CACHE_KEY = "hiking.public.state.v10";
+  const STATE_CACHE_KEY = "hiking.public.state.v11";
   const PHOTO_META_TTL = 5 * 60 * 1000;
   const SIGNED_URL_TTL = 45 * 60 * 1000;
   const photoMetaCache = new Map();   // placeId -> {rows, ts}
@@ -366,6 +371,10 @@
       "hidden",
       !state.canEdit || !state.currentPlace || !state.activeRouteId
     );
+    if(E.addExistingPhotos) E.addExistingPhotos.classList.toggle(
+      "hidden",
+      !state.canEdit || !state.currentPlace || !state.activeRouteId
+    );
   }
 
   // ---------------- Local preview backend ----------------
@@ -625,12 +634,22 @@
     const rec=state.photos.find(p=>p.id===photoId);
     if(!rec) return;
 
+    // A photo may belong to only one custom route.
+    // Once it is assigned, it cannot be moved directly to another route.
+    if(rec.route_id){
+      toast(`已属于「${routeNameById(rec.route_id)||"其他路线"}」`);
+      return;
+    }
+
+    if(!state.routes.length){
+      toast("请先添加一条徒步路线");
+      return;
+    }
+
     E.photoRoutePhotoId.value=photoId;
-    E.photoRouteSelect.innerHTML=[
-      `<option value="">不归入具体路线（仅在 Happy trip 总览）</option>`,
-      ...state.routes.map(r=>`<option value="${esc(r.id)}">${esc(r.name)}</option>`)
-    ].join("");
-    E.photoRouteSelect.value=rec.route_id||"";
+    E.photoRouteSelect.innerHTML=state.routes
+      .map(r=>`<option value="${esc(r.id)}">${esc(r.name)}</option>`)
+      .join("");
     openDialog(E.photoRouteDialog);
   }
 
@@ -638,33 +657,220 @@
     assertCanEdit();
     const photoId=E.photoRoutePhotoId.value;
     const routeId=E.photoRouteSelect.value||null;
-    if(!photoId || !state.currentPlace) return;
+    if(!photoId || !routeId || !state.currentPlace) return;
 
     if(CLOUD){
-      const {error}=await sb.from("photos")
+      // .is(route_id, null) prevents accidentally stealing a photo
+      // that another route/user assigned in the meantime.
+      const {data,error}=await sb.from("photos")
         .update({route_id:routeId})
-        .eq("id",photoId);
+        .eq("id",photoId)
+        .is("route_id",null)
+        .select("id");
       if(error) throw error;
+      if(!(data||[]).length){
+        throw new Error("这张照片已经属于其他徒步路线，不能重复归类。");
+      }
       photoMetaCache.delete(state.currentPlace.id);
     }else{
       const rows=await localPhotoList(state.currentPlace.id);
       const rec=rows.find(r=>r.id===photoId);
-      if(rec){
-        rec.route_id=routeId;
-        const db=await openLocalPhotoDB();
-        await new Promise((resolve,reject)=>{
-          const tx=db.transaction("photos","readwrite");
-          tx.objectStore("photos").put(rec);
-          tx.oncomplete=resolve;
-          tx.onerror=()=>reject(tx.error);
-        });
-        db.close();
-      }
+      if(!rec) return;
+      if(rec.route_id) throw new Error("这张照片已经属于其他徒步路线，不能重复归类。");
+
+      rec.route_id=routeId;
+      const db=await openLocalPhotoDB();
+      await new Promise((resolve,reject)=>{
+        const tx=db.transaction("photos","readwrite");
+        tx.objectStore("photos").put(rec);
+        tx.oncomplete=resolve;
+        tx.onerror=()=>reject(tx.error);
+      });
+      db.close();
     }
 
     closeDialog("photoRouteDialog");
     await renderPhotos();
-    toast(routeId?"已归入路线":"已取消具体路线归类");
+    toast("已归入路线");
+  }
+
+  async function removePhotoFromCurrentRoute(photoId){
+    assertCanEdit();
+    if(!state.currentPlace || !state.activeRouteId) return;
+
+    const routeId=state.activeRouteId;
+
+    if(CLOUD){
+      const {data,error}=await sb.from("photos")
+        .update({route_id:null})
+        .eq("id",photoId)
+        .eq("route_id",routeId)
+        .select("id");
+      if(error) throw error;
+      if(!(data||[]).length) return;
+      photoMetaCache.delete(state.currentPlace.id);
+    }else{
+      const rows=await localPhotoList(state.currentPlace.id);
+      const rec=rows.find(r=>r.id===photoId);
+      if(!rec || rec.route_id!==routeId) return;
+
+      rec.route_id=null;
+      const db=await openLocalPhotoDB();
+      await new Promise((resolve,reject)=>{
+        const tx=db.transaction("photos","readwrite");
+        tx.objectStore("photos").put(rec);
+        tx.oncomplete=resolve;
+        tx.onerror=()=>reject(tx.error);
+      });
+      db.close();
+    }
+
+    await renderPhotos();
+    toast("已移回 Happy trip");
+  }
+
+  function clearPickerObjectUrls(){
+    pickerObjectUrls.forEach(URL.revokeObjectURL);
+    pickerObjectUrls=[];
+  }
+
+  function renderExistingPhotoPicker(rows){
+    existingPhotoSelection.clear();
+    E.existingPhotoGrid.innerHTML="";
+    E.existingPhotoEmpty.classList.toggle("hidden",rows.length>0);
+    E.addSelectedExistingPhotos.disabled=true;
+
+    rows.forEach(rec=>{
+      const card=document.createElement("button");
+      card.type="button";
+      card.className="existing-photo-item";
+      card.dataset.id=rec.id;
+      card.innerHTML=`
+        <img src="${esc(rec.url)}" alt="" loading="lazy" decoding="async">
+        <span class="existing-photo-check">✓</span>
+      `;
+
+      card.onclick=()=>{
+        if(existingPhotoSelection.has(rec.id)){
+          existingPhotoSelection.delete(rec.id);
+          card.classList.remove("selected");
+        }else{
+          existingPhotoSelection.add(rec.id);
+          card.classList.add("selected");
+        }
+
+        const count=existingPhotoSelection.size;
+        E.addSelectedExistingPhotos.disabled=count===0;
+        E.addSelectedExistingPhotos.textContent=count
+          ? `加入选中的 ${count} 张照片`
+          : "加入选中的照片";
+      };
+
+      E.existingPhotoGrid.appendChild(card);
+    });
+  }
+
+  async function openExistingPhotoPicker(){
+    assertCanEdit();
+    if(!state.currentPlace || !state.activeRouteId) return;
+
+    clearPickerObjectUrls();
+    existingPhotoSelection.clear();
+
+    const route=state.routes.find(r=>r.id===state.activeRouteId);
+    E.existingPhotoRouteName.textContent=route?.name||"当前路线";
+    E.existingPhotoGrid.innerHTML="";
+    E.existingPhotoEmpty.classList.add("hidden");
+    E.addSelectedExistingPhotos.disabled=true;
+    E.addSelectedExistingPhotos.textContent="正在读取照片…";
+
+    openDialog(E.existingPhotoDialog);
+
+    try{
+      let rows=[];
+
+      if(CLOUD){
+        const allRows=await cloudPhotoRows(state.currentPlace.id,{force:true});
+        // Only unassigned photos are eligible. Photos in another route
+        // are deliberately excluded and cannot be selected.
+        const eligible=allRows.filter(r=>!r.route_id);
+        rows=await cloudSignedUrls(eligible,"gallery");
+      }else{
+        const allRows=await localPhotoList(state.currentPlace.id);
+        rows=allRows
+          .filter(r=>!r.route_id)
+          .map(r=>{
+            const url=URL.createObjectURL(r.blob);
+            pickerObjectUrls.push(url);
+            return {...r,url};
+          });
+      }
+
+      renderExistingPhotoPicker(rows);
+      E.addSelectedExistingPhotos.textContent="加入选中的照片";
+    }catch(e){
+      console.error(e);
+      E.existingPhotoGrid.innerHTML="";
+      E.existingPhotoEmpty.textContent="照片读取失败："+e.message;
+      E.existingPhotoEmpty.classList.remove("hidden");
+      E.addSelectedExistingPhotos.disabled=true;
+      E.addSelectedExistingPhotos.textContent="加入选中的照片";
+    }
+  }
+
+  async function addSelectedExistingPhotos(){
+    assertCanEdit();
+    if(!state.currentPlace || !state.activeRouteId || !existingPhotoSelection.size) return;
+
+    const ids=[...existingPhotoSelection];
+    const routeId=state.activeRouteId;
+    const placeId=state.currentPlace.id;
+
+    if(CLOUD){
+      // Important: only rows still unassigned can be updated.
+      const {data,error}=await sb.from("photos")
+        .update({route_id:routeId})
+        .in("id",ids)
+        .eq("place_id",placeId)
+        .is("route_id",null)
+        .select("id");
+      if(error) throw error;
+
+      const added=(data||[]).length;
+      if(!added) throw new Error("这些照片已经被归入其他路线。");
+      photoMetaCache.delete(placeId);
+
+      closeDialog("existingPhotoDialog");
+      clearPickerObjectUrls();
+      await renderPhotos();
+      toast(`已加入 ${added} 张照片`);
+    }else{
+      const allRows=await localPhotoList(placeId);
+      const db=await openLocalPhotoDB();
+      let added=0;
+
+      await new Promise((resolve,reject)=>{
+        const tx=db.transaction("photos","readwrite");
+        const store=tx.objectStore("photos");
+
+        allRows.forEach(rec=>{
+          if(ids.includes(rec.id) && !rec.route_id){
+            rec.route_id=routeId;
+            store.put(rec);
+            added++;
+          }
+        });
+
+        tx.oncomplete=resolve;
+        tx.onerror=()=>reject(tx.error);
+      });
+
+      db.close();
+      closeDialog("existingPhotoDialog");
+      clearPickerObjectUrls();
+      await renderPhotos();
+      toast(`已加入 ${added} 张照片`);
+    }
   }
 
   // ---------------- Supabase backend ----------------
@@ -993,6 +1199,8 @@
 
   function closeAlbum(push=true){
     closeLightbox();
+    clearPickerObjectUrls();
+    existingPhotoSelection.clear();
     E.album.classList.remove("open");
     E.album.setAttribute("aria-hidden","true");
     document.body.style.overflow="";
@@ -1248,19 +1456,34 @@
           <img src="${esc(rec.url)}" alt="" loading="lazy" decoding="async">
           ${state.canEdit ? `
           <div class="photo-actions">
-            <button class="classify">归类</button>
+            ${routeId
+              ? `<button class="unroute">移出路线</button>`
+              : rec.route_id
+                ? `<button class="route-badge" disabled>${esc(routeNameById(rec.route_id)||"已归类")}</button>`
+                : `<button class="classify">归类</button>`
+            }
             <button class="cover">${rec.is_cover?"封面 ✓":"设为封面"}</button>
             <button class="del">删除</button>
           </div>` : ""}`;
 
         const photoImg=item.querySelector("img");
         const classifyBtn=item.querySelector(".classify");
+        const unrouteBtn=item.querySelector(".unroute");
         const coverBtn=item.querySelector(".cover");
         const delBtn=item.querySelector(".del");
 
         if(classifyBtn) classifyBtn.onclick=e=>{
           e.stopPropagation();
           openPhotoRouteEditor(rec.id);
+        };
+
+        if(unrouteBtn) unrouteBtn.onclick=async e=>{
+          e.stopPropagation();
+          try{
+            await removePhotoFromCurrentRoute(rec.id);
+          }catch(err){
+            alert(err.message);
+          }
         };
 
         if(photoImg){
@@ -1414,6 +1637,7 @@
   // ---------------- Events ----------------
   E.addCountry.onclick=()=>{ if(state.canEdit) openCountryEditor(); };
   E.addRoute.onclick=()=>openRouteEditor();
+  E.addExistingPhotos.onclick=()=>openExistingPhotoPicker();
   E.manageRoute.onclick=()=>{ if(state.activeRouteId) openRouteEditor(state.activeRouteId); };
   $("saveRouteBtn").onclick=async()=>{
     try{await saveRouteFolder()}catch(e){alert(e.message)}
@@ -1423,6 +1647,15 @@
   };
   $("savePhotoRouteBtn").onclick=async()=>{
     try{await savePhotoRoute()}catch(e){alert(e.message)}
+  };
+  E.addSelectedExistingPhotos.onclick=async()=>{
+    E.addSelectedExistingPhotos.disabled=true;
+    try{
+      await addSelectedExistingPhotos();
+    }catch(e){
+      alert(e.message);
+      E.addSelectedExistingPhotos.disabled=false;
+    }
   };
   $("saveCountryBtn").onclick=submitCountry;
   $("savePlaceBtn").onclick=submitPlace;
@@ -1442,7 +1675,13 @@
   };
 
   document.querySelectorAll("[data-close]").forEach(b=>{
-    b.onclick=()=>closeDialog(b.dataset.close);
+    b.onclick=()=>{
+      if(b.dataset.close==="existingPhotoDialog"){
+        clearPickerObjectUrls();
+        existingPhotoSelection.clear();
+      }
+      closeDialog(b.dataset.close);
+    };
   });
 
   $("albumBack").onclick=()=>{

@@ -1198,3 +1198,122 @@ h1{
     overflow:visible;
   }
 }
+
+
+/* ---------- Route photo assignment v11 ---------- */
+.photo-add-actions{
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+  gap:7px;
+}
+
+.existing-photo-pill{
+  min-height:44px;
+  border:0;
+  border-radius:999px;
+  padding:9px 13px;
+  background:#f0ebe2;
+  color:#5d594f;
+  font-size:13px;
+  font-weight:800;
+  cursor:pointer;
+}
+
+.existing-photo-card{
+  max-height:min(88dvh,760px);
+}
+
+.existing-photo-grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:8px;
+  margin:16px 0 12px;
+  max-height:50dvh;
+  overflow:auto;
+  -webkit-overflow-scrolling:touch;
+}
+
+.existing-photo-item{
+  position:relative;
+  aspect-ratio:1 / 1;
+  padding:0;
+  border:2px solid transparent;
+  border-radius:14px;
+  overflow:hidden;
+  background:#eee8de;
+  cursor:pointer;
+}
+
+.existing-photo-item img{
+  display:block;
+  width:100%;
+  height:100%;
+  object-fit:cover;
+}
+
+.existing-photo-item.selected{
+  border-color:var(--green);
+  box-shadow:0 0 0 2px rgba(85,115,96,.13);
+}
+
+.existing-photo-check{
+  position:absolute;
+  right:6px;
+  top:6px;
+  width:25px;
+  height:25px;
+  display:grid;
+  place-items:center;
+  border-radius:50%;
+  background:rgba(255,255,255,.88);
+  color:transparent;
+  font-weight:900;
+  box-shadow:0 2px 8px rgba(0,0,0,.12);
+}
+
+.existing-photo-item.selected .existing-photo-check{
+  color:white;
+  background:var(--green);
+}
+
+.existing-photo-empty{
+  margin:18px 0;
+  padding:22px 12px;
+  border-radius:15px;
+  background:#f6f1e8;
+  color:var(--muted);
+  text-align:center;
+  font-size:12px;
+}
+
+.photo-actions .unroute{
+  margin-right:auto;
+  background:rgba(122,82,61,.72);
+}
+
+.photo-actions .route-badge{
+  margin-right:auto;
+  max-width:108px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  opacity:.88;
+  cursor:default;
+  background:rgba(66,89,73,.72);
+}
+
+@media(max-width:430px){
+  .section-row{
+    align-items:flex-start;
+  }
+
+  .photo-add-actions{
+    max-width:190px;
+  }
+
+  .existing-photo-grid{
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:6px;
+  }
+}

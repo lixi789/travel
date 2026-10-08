@@ -1,4 +1,4 @@
-const CACHE='shared-hiking-v10-route-folders';
+const CACHE='shared-hiking-v11-strict-route-photos';
 const CORE=[
   './',
   './index.html',
